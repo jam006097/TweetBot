@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <title>Twitter Auto Post</title>
+    <style>
+        .deleted {
+            color: red;
+        }
+        .flash-message {
+            position: fixed;
+            top: 10px;
+            right: 10px;
+            background-color: lightgrey;
+            padding: 10px;
+            border-radius: 5px;
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+        }
+        .edit-form {
+            display: none;
+        }
+        .edit-form input[type="text"] {
+            width: 400px;
+            padding: 10px;
+        }
+    </style>
+</head>
+<body>
+    <h1>Twitter Auto Post</h1>
+
+    <h2>自動投稿</h2>
+    <p>{{ '自動投稿実行中' if is_auto_posting else '自動投稿停止中' }}</p>
+
+    <form action="/start_auto_post" method="get">
+        <button type="submit">自動投稿開始</button>
+    </form>
+
+    <form action="/stop_auto_post" method="get"> 
+        <button type="submit">自動投稿停止</button> 
+    </form>
+
+    <h2>投稿間隔</h2>
+    <p>現在の投稿間隔: <span id="current-interval">{{ interval }}</span> 時間</p>
+
+    <form action="/set_interval" method="post">
+        <input type="number" name="interval" placeholder="投稿間隔(時間)" min="1">
+        <button type="submit">投稿間隔を設定</button>
+    </form>
+
+    <h2>CSV</h2>
+    <form action="/upload" method="post" enctype="multipart/form-data">
+        <input type="file" name="file" accept=".csv">
+        <button type="submit">CSVをアップロード</button>
+    </form>
+
+    <h2>メッセージ追加</h2>
+    <form action="/post" method="post">
+        <input type="text" name="message" placeholder="メッセージを入力">
+        <button type="submit">メッセージを追加</button>
+    </form>
+    
+    <h2>メッセージ一覧</h2>
+    <ul id="message-list">
+        {% for id, message, is_deleted in messages %}
+            <li class="{{ 'deleted' if is_deleted else '' }}" data-id="{{ id }}">
+                <span class="message-text">{{ message }}</span> {% if is_deleted %}(投稿済み){% endif %}
+                <button class="edit-btn" onclick="editMessage('{{ id }}')">編集</button>
+                <form action="/edit/{{ id }}" method="post" class="edit-form" style="display:none;">
+                    <input type="text" name="new_message" value="{{ message }}" placeholder="新しいメッセージ">
+                    <button type="submit">更新</button>
+                    <button type="button" onclick="cancelEdit('{{ id }}')">キャンセル</button>
+                </form>
+                <form action="/delete/{{ id }}" method="post" style="display:inline;">
+                    <button type="submit">削除</button>
+                </form>
+            </li>
+        {% endfor %}
+    </ul>
+
+    {% with messages = get_flashed_messages() %}
+      {% if messages %}
+        <div class="flash-message">
+          <ul>
+            {% for message in messages %}
+              <li>{{ message }}</li>
+            {% endfor %}
+          </ul>
+        </div>
+        <script>
+          setTimeout(function() {
+              document.querySelector('.flash-message').style.display = 'none';
+          }, 3000);  // 3秒後にメッセージを非表示にする
+        </script>
+      {% endif %}
+    {% endwith %}
+
+    <script>
+        let isEditing = false;
+
+        function fetchMessages() {
+            if (isEditing) return;  // 編集中の場合は更新を止める
+            fetch('/messages')
+                .then(response => response.json())
+                .then(data => {
+                    const messageList = document.getElementById('message-list');
+                    messageList.innerHTML = '';
+                    data.forEach(message => {
+                        const li = document.createElement('li');
+                        li.dataset.id = message[0];
+                        li.innerHTML = `
+                            <span class="message-text">${message[1]}${message[2] ? ' (投稿済み)' : ''}</span>
+                            <button class="edit-btn" onclick="editMessage('${message[0]}')">編集</button>
+                            <form action="/edit/${message[0]}" method="post" class="edit-form" style="display:none;">
+                                <input type="text" name="new_message" value="${message[1]}" placeholder="新しいメッセージ" style="width: 400px; padding: 10px;">
+                                <button type="submit">更新</button>
+                                <button type="button" onclick="cancelEdit('${message[0]}')">キャンセル</button>
+                            </form>
+                            <form action="/delete/${message[0]}" method="post" style="display:inline;">
+                                <button type="submit">削除</button>
+                            </form>
+                        `;
+                        if (message[2]) {
+                            li.classList.add('deleted');
+                        }
+                        messageList.appendChild(li);
+                    });
+                });
+        }
+
+        function checkResetStatus() {
+            if (isEditing) return;  // 編集中の場合はリセットチェックを止める
+            fetch('/reset_status')
+                .then(response => response.json())
+                .then(data => {
+                    if (data.reset) {
+                        fetchMessages();  // リセットされた場合にメッセージ一覧を更新
+                    }
+                });
+        }
+
+        function editMessage(id) {
+            isEditing = true;
+            const li = document.querySelector(`li[data-id='${id}']`);
+            li.querySelector('.edit-form').style.display = 'inline';
+            li.querySelector('.message-text').style.display = 'none';
+            li.querySelector('.edit-btn').style.display = 'none';  // 編集ボタンを非表示にする
+        }
+
+        function cancelEdit(id) {
+            isEditing = false;
+            const li = document.querySelector(`li[data-id='${id}']`);
+            li.querySelector('.edit-form').style.display = 'none';
+            li.querySelector('.message-text').style.display = 'inline';
+            li.querySelector('.edit-btn').style.display = 'inline';  // 編集ボタンを表示する
+        }
+
+        setInterval(fetchMessages, 3600000); // 1時間おきにメッセージを取得
+        setInterval(checkResetStatus, 3600000); // 1時間おきにリセットフラグをチェック
+    </script>
+</body>
+</html>
