@@ -6,7 +6,7 @@ conn = sqlite3.connect('tweets.db')
 # カーソルオブジェクトを作成
 cursor = conn.cursor()
 
-# テーブルを作成（存在しない場合は新規作成）
+# tweetsテーブルを作成（存在しない場合は新規作成）
 cursor.execute('''
 CREATE TABLE IF NOT EXISTS tweets (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -15,18 +15,18 @@ CREATE TABLE IF NOT EXISTS tweets (
 )
 ''')
 
-# テストメッセージを追加
-test_messages = [
-    "テストメッセージ1です",
-    "テストメッセージ2です",
-    "テストメッセージ3です"
-]
-
-for message in test_messages:
-    cursor.execute("INSERT INTO tweets (message) VALUES (?)", (message,))
+# settingsテーブルを作成（存在しない場合は新規作成）
+cursor.execute('''
+CREATE TABLE IF NOT EXISTS settings (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    interval_type TEXT,
+    interval INTEGER,
+    specific_time TEXT
+)
+''')
 
 # 変更を保存
 conn.commit()
 conn.close()
 
-print("データベースとテーブルが作成され、テストメッセージが追加されました")
+print("データベースとテーブルが作成されました")

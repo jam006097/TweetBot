@@ -23,6 +23,9 @@
             width: 400px;
             padding: 10px;
         }
+        .hidden {
+            display: none;
+        }
     </style>
 </head>
 <body>
@@ -39,13 +42,38 @@
         <button type="submit">自動投稿停止</button> 
     </form>
 
-    <h2>投稿間隔</h2>
-    <p>現在の投稿間隔: <span id="current-interval">{{ interval }}</span> 時間</p>
-
+    <h2>投稿間隔の設定</h2>
     <form action="/set_interval" method="post">
-        <input type="number" name="interval" placeholder="投稿間隔(時間)" min="1">
-        <button type="submit">投稿間隔を設定</button>
+        <label for="interval-type">設定タイプを選択:</label>
+        <select id="interval-type" name="interval_type" onchange="toggleIntervalType()">
+            <option value="interval" {% if interval_type == 'interval' %}selected{% endif %}>時間間隔</option>
+            <option value="specific" {% if interval_type == 'specific' %}selected{% endif %}>時間指定</option>
+        </select>
+
+        <div id="interval-input" class="interval-setting {% if interval_type != 'interval' %}hidden{% endif %}">
+            <input type="number" name="interval" placeholder="投稿間隔(時間)" min="1" value="{{ interval }}">
+        </div>
+
+        <div id="specific-input" class="interval-setting {% if interval_type != 'specific' %}hidden{% endif %}">
+            <label>時間指定:</label>
+            {% for time in specific_times %}
+                <div>
+                    <input type="time" name="specific_times" value="{{ time }}">
+                    <button type="button" onclick="removeSpecificTime('{{ time }}')">削除</button>
+                </div>
+            {% endfor %}
+            {% for _ in range(5 - specific_times|length) %}
+                <div>
+                    <input type="time" name="specific_times">
+                </div>
+            {% endfor %}
+        </div>
+        
+        <button type="submit">設定を保存</button>
     </form>
+
+    <h2>現在の設定</h2>
+    <p>{{ current_setting }}</p>
 
     <h2>CSV</h2>
     <form action="/upload" method="post" enctype="multipart/form-data">
@@ -152,6 +180,25 @@
             li.querySelector('.edit-form').style.display = 'none';
             li.querySelector('.message-text').style.display = 'inline';
             li.querySelector('.edit-btn').style.display = 'inline';  // 編集ボタンを表示する
+        }
+
+        function toggleIntervalType() {
+            const intervalType = document.getElementById('interval-type').value;
+            const intervalInput = document.getElementById('interval-input');
+            const specificInput = document.getElementById('specific-input');
+            
+            if (intervalType === 'interval') {
+                intervalInput.classList.remove('hidden');
+                specificInput.classList.add('hidden');
+            } else {
+                intervalInput.classList.add('hidden');
+                specificInput.classList.remove('hidden');
+            }
+        }
+
+        function removeSpecificTime(time) {
+            fetch(`/remove_specific_time?time=${time}`, { method: 'POST' })
+                .then(() => location.reload());
         }
 
         setInterval(fetchMessages, 3600000); // 1時間おきにメッセージを取得
