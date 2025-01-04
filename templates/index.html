@@ -20,16 +20,85 @@
             display: none;
         }
         .edit-form input[type="text"] {
-            width: 400px;
+            width: 700px;
             padding: 10px;
         }
-        .hidden {
-            display: none;
+        .form-group {
+            margin-bottom: 1em;
         }
     </style>
 </head>
 <body>
     <h1>Twitter Auto Post</h1>
+
+    <h2>アカウント選択</h2>
+    <form action="/select_account" method="post">
+        <select name="account_id" onchange="this.form.submit()">
+            {% for account in accounts %}
+                <option value="{{ account[0] }}" {% if account[0] == current_account_id %}selected{% endif %}>{{ account[1] }}</option>
+            {% endfor %}
+        </select>
+    </form>
+
+    <h2>アカウント情報編集</h2>
+    {% if current_account %}
+    <form action="/edit_account" method="post">
+        <div class="form-group">
+            <label>アカウント名:</label>
+            <input type="text" name="name" value="{{ current_account[1] }}" required>
+        </div>
+        <div class="form-group">
+            <label>Consumer API Key:</label>
+            <input type="text" name="consumer_api_key" value="{{ current_account[2] }}" required>
+        </div>
+        <div class="form-group">
+            <label>Consumer API Secret:</label>
+            <input type="text" name="consumer_api_secret" value="{{ current_account[3] }}" required>
+        </div>
+        <div class="form-group">
+            <label>Bearer Token:</label>
+            <input type="text" name="bearer_token" value="{{ current_account[4] }}" required>
+        </div>
+        <div class="form-group">
+            <label>Access Token:</label>
+            <input type="text" name="access_token" value="{{ current_account[5] }}" required>
+        </div>
+        <div class="form-group">
+            <label>Access Token Secret:</label>
+            <input type="text" name="access_token_secret" value="{{ current_account[6] }}" required>
+        </div>
+        <button type="submit">更新</button>
+    </form>
+    {% endif %}
+
+    <h2>アカウント登録</h2>
+    <form action="/register_account" method="post">
+        <div class="form-group">
+            <label>アカウント名:</label>
+            <input type="text" name="name" required>
+        </div>
+        <div class="form-group">
+            <label>Consumer API Key:</label>
+            <input type="text" name="consumer_api_key" required>
+        </div>
+        <div class="form-group">
+            <label>Consumer API Secret:</label>
+            <input type="text" name="consumer_api_secret" required>
+        </div>
+        <div class="form-group">
+            <label>Bearer Token:</label>
+            <input type="text" name="bearer_token" required>
+        </div>
+        <div class="form-group">
+            <label>Access Token:</label>
+            <input type="text" name="access_token" required>
+        </div>
+        <div class="form-group">
+            <label>Access Token Secret:</label>
+            <input type="text" name="access_token_secret" required>
+        </div>
+        <button type="submit">登録</button>
+    </form>
 
     <h2>自動投稿</h2>
     <p>{{ '自動投稿実行中' if is_auto_posting else '自動投稿停止中' }}</p>
@@ -139,7 +208,7 @@
                             <span class="message-text">${message[1]}${message[2] ? ' (投稿済み)' : ''}</span>
                             <button class="edit-btn" onclick="editMessage('${message[0]}')">編集</button>
                             <form action="/edit/${message[0]}" method="post" class="edit-form" style="display:none;">
-                                <input type="text" name="new_message" value="${message[1]}" placeholder="新しいメッセージ" style="width: 400px; padding: 10px;">
+                                <input type="text" name="new_message" value="${message[1]}" placeholder="新しいメッセージ" style="width: 700px; padding: 10px;">
                                 <button type="submit">更新</button>
                                 <button type="button" onclick="cancelEdit('${message[0]}')">キャンセル</button>
                             </form>
