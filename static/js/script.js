@@ -41,7 +41,7 @@ function checkResetStatus() {
 }
 
 function editMessage(id) {
-    //isEditing = true;
+    isEditing = true;
     const li = document.querySelector(`li[data-id='${id}']`);
     li.querySelector('.message-text').style.display = 'none';
     li.querySelector('.edit-btn').style.display = 'none';
@@ -56,7 +56,7 @@ function editMessage(id) {
 }
 
 function cancelEdit(id) {
-    //isEditing = false;
+    isEditing = false;
     const li = document.querySelector(`li[data-id='${id}']`);
     li.querySelector('.message-text').style.display = 'inline';
     li.querySelector('.edit-btn').style.display = 'inline';
@@ -94,3 +94,36 @@ function removeSpecificTime(time) {
 
 setInterval(fetchMessages, 3600000); // 1時間おきにメッセージを取得
 setInterval(checkResetStatus, 3600000); // 1時間おきにリセットフラグをチェック
+
+function setIntervalSettings() {
+    const intervalType = document.getElementById('interval-type').value;
+    const interval = document.querySelector('input[name="interval"]').value;
+    const specificTimes = Array.from(document.querySelectorAll('input[name="specific_times"]')).map(input => input.value);
+
+    fetch('/set_interval', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+            interval_type: intervalType,
+            interval: interval,
+            specific_times: specificTimes,
+        }),
+    }).then(response => response.json())
+      .then(data => {
+          if (data.success) {
+              alert('設定が更新されました');
+              fetchMessages();  // 更新が成功したらメッセージ一覧を再取得
+          } else {
+              alert('設定の更新に失敗しました: ' + data.error);
+          }
+      });
+}
+
+document.getElementById('interval-type').addEventListener('change', setIntervalSettings);
+document.querySelector('input[name="interval"]').addEventListener('change', setIntervalSettings);
+document.querySelectorAll('input[name="specific_times"]').forEach(input => {
+    input.addEventListener('change', setIntervalSettings);
+});
+

@@ -9,6 +9,7 @@ from werkzeug.utils import secure_filename
 import threading
 from dotenv import load_dotenv
 import logging
+from datetime import datetime, timedelta
 
 # .envファイルから環境変数を読み込む
 load_dotenv()
@@ -27,6 +28,10 @@ specific_times = []
 is_auto_posting = False
 interval_type = 'interval'  # 初期値は時間間隔
 current_account_id = None
+auto_post_thread = None  # auto_post_threadの初期化
+# 定数の定義
+INTERVAL_IN_SECONDS = 3600  # 1時間
+CHECK_INTERVAL = 60  # 1分
 
 def init_db():
     conn = sqlite3.connect('tweets.db')
@@ -113,6 +118,42 @@ def load_account(account_id):
             logging.error(f"Error initializing Twitter client: {e}")
 
     conn.close()
+
+def update_auto_post_schedule():
+    global auto_post_thread
+
+    logging.debug(f"Updating auto post schedule: interval_type={interval_type}, interval={interval}, specific_times={specific_times}")
+
+    # 現在のスレッドが存在し、動作中であればキャンセル
+    if auto_post_thread:
+        logging.debug(f"auto_post_thread exists: {auto_post_thread}")
+    if auto_post_thread and isinstance(auto_post_thread, threading.Thread):
+        logging.debug(f"auto_post_thread is a threading.Thread instance: {auto_post_thread.is_alive()}")
+
+    if auto_post_thread and isinstance(auto_post_thread, threading.Thread) and auto_post_thread.is_alive():
+        auto_post_thread.cancel()
+
+    # 新しいスケジュールの設定
+    if interval_type == 'interval' and interval is not None:
+        auto_post_thread = threading.Timer(interval * INTERVAL_IN_SECONDS, job)
+    elif interval_type == 'specific' and specific_times:
+        next_post_time = get_seconds_until_next_post(specific_times)
+        auto_post_thread = threading.Timer(next_post_time, job)
+
+    if auto_post_thread:
+        auto_post_thread.start()
+
+def get_seconds_until_next_post(specific_times):
+    now = datetime.now().time()
+    future_times = [datetime.strptime(t, "%H:%M").time() for t in specific_times if datetime.strptime(t, "%H:%M").time() > now]
+    if future_times:
+        next_time = min(future_times)
+    else:
+        next_time = min([datetime.strptime(t, "%H:%M").time() for t in specific_times])
+    next_post_time = datetime.combine(datetime.today(), next_time)
+    if next_post_time < datetime.now():
+        next_post_time += timedelta(days=1)
+    return (next_post_time - datetime.now()).total_seconds()
 
 @app.route('/')
 def index():
@@ -211,7 +252,6 @@ def edit_account():
         """, (name, consumer_api_key, consumer_api_secret, bearer_token, access_token, access_token_secret, current_account_id))
 
         logging.debug(f"SQL Update Query executed for Account ID: {current_account_id}")
-
         conn.commit()
         conn.close()
         flash("アカウント情報が更新されました")
@@ -270,6 +310,9 @@ def set_interval():
 
         conn.commit()
         conn.close()
+
+        # 自動投稿スケジュールを更新
+        update_auto_post_schedule()
     except Exception as e:
         logging.error(f"Error setting interval: {e}")
         flash("投稿間隔の設定中にエラーが発生しました")
@@ -296,13 +339,18 @@ def remove_specific_time():
 @app.route('/start_auto_post')
 def start_auto_post():
     try:
-        global is_auto_posting
+        global is_auto_posting, current_account  # current_accountをグローバル変数として宣言
         is_auto_posting = True
         flash("自動投稿実行中")
-        
+
         logging.debug(f"Starting auto post with credentials: Bearer Token - {current_account[4]}, Consumer Key - {current_account[2]}, Access Token - {current_account[5]}")
-        
-        threading.Thread(target=job).start()
+
+        # 現在のアカウント情報をログに出力
+        logging.debug(f"Current account ID: {current_account_id}")
+        logging.debug(f"Current account details: {current_account}")
+
+        # 自動投稿スケジュールの更新
+        update_auto_post_schedule()
     except Exception as e:
         logging.error(f"Error starting auto post: {e}")
         flash("自動投稿の開始中にエラーが発生しました")
@@ -313,6 +361,8 @@ def stop_auto_post():
     try:
         global is_auto_posting
         is_auto_posting = False
+        if auto_post_thread: 
+            auto_post_thread.cancel()
         flash("自動投稿を停止しました")
     except Exception as e:
         logging.error(f"Error stopping auto post: {e}")
@@ -432,21 +482,27 @@ def post_message():
         if "duplicate" in str(e):
             print("重複投稿エラーが発生しました。次のメッセージを試します。")
             post_message()
+    except Exception as e:
+        logging.error(f"Unexpected error in post_message: {e}")
 
 def job():
     try:
+        logging.debug("Job function started")
         while is_auto_posting:
             if interval_type == 'interval':
+                logging.debug("Posting message in interval mode")
                 post_message()
-                time.sleep(interval * 3600)  # 時間単位に変更
+                time.sleep(interval * INTERVAL_IN_SECONDS)  # 定数を使用
             else:
                 current_time = datetime.now().strftime("%H:%M")
                 if current_time in specific_times:
+                    logging.debug(f"Posting message at specific time: {current_time}")
                     post_message()
-                time.sleep(60)  # 1分ごとにチェック
+                time.sleep(CHECK_INTERVAL)  # 定数を使用
     except Exception as e:
         logging.error(f"Error in job: {e}")
 
 if __name__ == '__main__':
     app.run(debug=True)
 
+ 
