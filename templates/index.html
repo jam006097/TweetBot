@@ -157,7 +157,7 @@
             <li class="list-group-item {{ 'deleted' if is_deleted else '' }}" data-id="{{ id }}">
                 <span class="message-text">{{ message }}</span> {% if is_deleted %}(投稿済み){% endif %}
                 <button class="btn btn-sm btn-warning edit-btn" onclick="editMessage('{{ id }}')">編集</button>
-                <button class="btn btn-sm btn-danger delete-btn" onclick="deleteMessage('{{ id }}')">削除</button>
+                <button class="btn btn-sm btn-danger delete-btn" onclick="deleteMessage('{{ id }}'); ">削除</button>
                 <form action="/edit/{{ id }}" method="post" class="edit-form" id="editForm-{{ id }}"
                     style="display:none;">
                     <input type="text" name="new_message" class="form-control d-inline w-75" value="{{ message }}"

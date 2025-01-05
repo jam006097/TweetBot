@@ -15,10 +15,10 @@ function fetchMessages() {
                     <span class="message-text">${message[1]}${message[2] ? ' (投稿済み)' : ''}</span>
                     <button class="btn btn-sm btn-warning edit-btn" onclick="editMessage('${message[0]}')">編集</button>
                     <button class="btn btn-sm btn-danger delete-btn" onclick="deleteMessage('${message[0]}')">削除</button>
-                    <form action="/edit/${message[0]}" method="post" class="edit-form d-inline" id="editForm-${message[0]}" style="display:none;">
-                        <input type="text" name="new_message" class="form-control d-inline w-75" value="${message[1]}" placeholder="新しいメッセージ">
-                        <button type="submit" class="btn btn-sm btn-primary">更新</button>
-                        <button type="button" class="btn btn-sm btn-secondary" onclick="cancelEdit('${message[0]}')">キャンセル</button>
+                    <form action="/edit/${message[0]}" method="post" class="edit-form " id="editForm-${message[0]}" style="display:none;">
+                        <input type="text" name="new_message" class="form-control d-inline w-75" value="${message[1]}" placeholder="新しいメッセージ" style="display:none;">
+                        <button type="submit" class="btn btn-sm btn-primary" style="display:none;">更新</button>
+                        <button type="button" class="btn btn-sm btn-secondary" style="display:none;" onclick="cancelEdit('${message[0]}')">キャンセル</button>
                     </form>
                 `;
                 if (message[2]) {
@@ -71,6 +71,7 @@ function deleteMessage(id) {
     fetch(`/delete/${id}`, { method: 'POST' })
         .then(() => fetchMessages());  // メッセージを削除した後、メッセージ一覧を更新
 }
+
 
 function toggleIntervalType() {
     const intervalType = document.getElementById('interval-type').value;
