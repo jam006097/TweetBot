@@ -3,172 +3,168 @@
 <head>
     <meta charset="UTF-8">
     <title>Twitter Auto Post</title>
-    <style>
-        .deleted {
-            color: red;
-        }
-        .flash-message {
-            position: fixed;
-            top: 10px;
-            right: 10px;
-            background-color: lightgrey;
-            padding: 10px;
-            border-radius: 5px;
-            box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
-        }
-        .edit-form {
-            display: none;
-        }
-        .edit-form input[type="text"] {
-            width: 700px;
-            padding: 10px;
-        }
-        .form-group {
-            margin-bottom: 1em;
-        }
-    </style>
+    <!-- BootstrapのCSSを追加 -->
+    <link href="https://maxcdn.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css" rel="stylesheet">
+    <!-- カスタムCSSを追加 -->
+    <link href="/static/css/style.css" rel="stylesheet">
 </head>
 <body>
-    <h1>Twitter Auto Post</h1>
+<div class="container">
+    <h1 class="my-4">Twitter Auto Post</h1>
 
     <h2>アカウント選択</h2>
-    <form action="/select_account" method="post">
-        <select name="account_id" onchange="this.form.submit()">
-            {% for account in accounts %}
-                <option value="{{ account[0] }}" {% if account[0] == current_account_id %}selected{% endif %}>{{ account[1] }}</option>
-            {% endfor %}
-        </select>
+    <form action="/select_account" method="post" class="form-inline">
+        <div class="form-group">
+            <label for="account_id" class="mr-2">アカウント:</label>
+            <select name="account_id" id="account_id" class="form-control" onchange="this.form.submit()">
+                {% for account in accounts %}
+                    <option value="{{ account[0] }}" {% if account[0] == current_account_id %}selected{% endif %}>{{ account[1] }}</option>
+                {% endfor %}
+            </select>
+        </div>
     </form>
 
-    <h2>アカウント情報編集</h2>
+    <h2 class="mt-4">アカウント情報編集</h2>
     {% if current_account %}
     <form action="/edit_account" method="post">
         <div class="form-group">
             <label>アカウント名:</label>
-            <input type="text" name="name" value="{{ current_account[1] }}" required>
+            <input type="text" name="name" class="form-control" value="{{ current_account[1] }}" required>
         </div>
         <div class="form-group">
             <label>Consumer API Key:</label>
-            <input type="text" name="consumer_api_key" value="{{ current_account[2] }}" required>
+            <input type="text" name="consumer_api_key" class="form-control" value="{{ current_account[2] }}" required>
         </div>
         <div class="form-group">
             <label>Consumer API Secret:</label>
-            <input type="text" name="consumer_api_secret" value="{{ current_account[3] }}" required>
+            <input type="text" name="consumer_api_secret" class="form-control" value="{{ current_account[3] }}" required>
         </div>
         <div class="form-group">
             <label>Bearer Token:</label>
-            <input type="text" name="bearer_token" value="{{ current_account[4] }}" required>
+            <input type="text" name="bearer_token" class="form-control" value="{{ current_account[4] }}" required>
         </div>
         <div class="form-group">
             <label>Access Token:</label>
-            <input type="text" name="access_token" value="{{ current_account[5] }}" required>
+            <input type="text" name="access_token" class="form-control" value="{{ current_account[5] }}" required>
         </div>
         <div class="form-group">
             <label>Access Token Secret:</label>
-            <input type="text" name="access_token_secret" value="{{ current_account[6] }}" required>
+            <input type="text" name="access_token_secret" class="form-control" value="{{ current_account[6] }}" required>
         </div>
-        <button type="submit">更新</button>
+        <button type="submit" class="btn btn-primary">更新</button>
     </form>
     {% endif %}
 
-    <h2>アカウント登録</h2>
+    <h2 class="mt-4">アカウント登録</h2>
     <form action="/register_account" method="post">
         <div class="form-group">
             <label>アカウント名:</label>
-            <input type="text" name="name" required>
+            <input type="text" name="name" class="form-control" required>
         </div>
         <div class="form-group">
             <label>Consumer API Key:</label>
-            <input type="text" name="consumer_api_key" required>
+            <input type="text" name="consumer_api_key" class="form-control" required>
         </div>
         <div class="form-group">
             <label>Consumer API Secret:</label>
-            <input type="text" name="consumer_api_secret" required>
+            <input type="text" name="consumer_api_secret" class="form-control" required>
         </div>
         <div class="form-group">
             <label>Bearer Token:</label>
-            <input type="text" name="bearer_token" required>
+            <input type="text" name="bearer_token" class="form-control" required>
         </div>
         <div class="form-group">
             <label>Access Token:</label>
-            <input type="text" name="access_token" required>
+            <input type="text" name="access_token" class="form-control" required>
         </div>
         <div class="form-group">
             <label>Access Token Secret:</label>
-            <input type="text" name="access_token_secret" required>
+            <input type="text" name="access_token_secret" class="form-control" required>
         </div>
-        <button type="submit">登録</button>
+        <button type="submit" class="btn btn-success">登録</button>
     </form>
 
-    <h2>自動投稿</h2>
+    <h2 class="mt-4">自動投稿</h2>
     <p>{{ '自動投稿実行中' if is_auto_posting else '自動投稿停止中' }}</p>
 
-    <form action="/start_auto_post" method="get">
-        <button type="submit">自動投稿開始</button>
+    <form action="/start_auto_post" method="get" class="mb-2">
+        <button type="submit" class="btn btn-info">自動投稿開始</button>
     </form>
 
     <form action="/stop_auto_post" method="get"> 
-        <button type="submit">自動投稿停止</button> 
+        <button type="submit" class="btn btn-danger">自動投稿停止</button> 
     </form>
 
-    <h2>投稿間隔の設定</h2>
+    <h2 class="mt-4">投稿間隔の設定</h2>
     <form action="/set_interval" method="post">
-        <label for="interval-type">設定タイプを選択:</label>
-        <select id="interval-type" name="interval_type" onchange="toggleIntervalType()">
-            <option value="interval" {% if interval_type == 'interval' %}selected{% endif %}>時間間隔</option>
-            <option value="specific" {% if interval_type == 'specific' %}selected{% endif %}>時間指定</option>
-        </select>
-
-        <div id="interval-input" class="interval-setting {% if interval_type != 'interval' %}hidden{% endif %}">
-            <input type="number" name="interval" placeholder="投稿間隔(時間)" min="1" value="{{ interval }}">
+        <div class="form-group">
+            <label for="interval-type">設定タイプを選択:</label>
+            <select id="interval-type" name="interval_type" class="form-control" onchange="toggleIntervalType()">
+                <option value="interval" {% if interval_type == 'interval' %}selected{% endif %}>時間間隔</option>
+                <option value="specific" {% if interval_type == 'specific' %}selected{% endif %}>時間指定</option>
+            </select>
         </div>
 
-        <div id="specific-input" class="interval-setting {% if interval_type != 'specific' %}hidden{% endif %}">
+        <div id="interval-input" class="form-group interval-setting {% if interval_type != 'interval' %}hidden{% endif %}">
+            <label>投稿間隔 (時間):</label>
+            <input type="number" name="interval" class="form-control" placeholder="投稿間隔(時間)" min="1" value="{{ interval }}">
+        </div>
+
+        <div id="specific-input" class="form-group interval-setting {% if interval_type != 'specific' %}hidden{% endif %}">
             <label>時間指定:</label>
             {% for time in specific_times %}
-                <div>
-                    <input type="time" name="specific_times" value="{{ time }}">
-                    <button type="button" onclick="removeSpecificTime('{{ time }}')">削除</button>
+                <div class="input-group mb-2">
+                    <input type="time" name="specific_times" class="form-control" value="{{ time }}">
+                    <div class="input-group-append">
+                        <button type="button" class="btn btn-outline-danger" onclick="removeSpecificTime('{{ time }}')">削除</button>
+                    </div>
                 </div>
             {% endfor %}
             {% for _ in range(5 - specific_times|length) %}
-                <div>
-                    <input type="time" name="specific_times">
+                <div class="input-group mb-2">
+                    <input type="time" name="specific_times" class="form-control">
                 </div>
             {% endfor %}
         </div>
         
-        <button type="submit">設定を保存</button>
+        <button type="submit" class="btn btn-primary">設定を保存</button>
     </form>
 
-    <h2>現在の設定</h2>
+    <h2 class="mt-4">現在の設定</h2>
     <p>{{ current_setting }}</p>
 
-    <h2>CSV</h2>
+    <h2 class="mt-4">CSV</h2>
     <form action="/upload" method="post" enctype="multipart/form-data">
-        <input type="file" name="file" accept=".csv">
-        <button type="submit">CSVをアップロード</button>
+        <div class="form-group">
+            <input type="file" name="file" class="form-control-file" accept=".csv">
+        </div>
+        <button type="submit" class="btn btn-primary">CSVをアップロード</button>
     </form>
 
-    <h2>メッセージ追加</h2>
+    <h2 class="mt-4">メッセージ追加</h2>
     <form action="/post" method="post">
-        <input type="text" name="message" placeholder="メッセージを入力">
-        <button type="submit">メッセージを追加</button>
+        <div class="input-group mb-3">
+            <input type="text" name="message" class="form-control" placeholder="メッセージを入力">
+            <div class="input-group-append">
+                <button type="submit" class="btn btn-primary">メッセージを追加</button>
+            </div>
+        </div>
     </form>
     
-    <h2>メッセージ一覧</h2>
-    <ul id="message-list">
+    <h2 class="mt-4">メッセージ一覧</h2>
+    <ul id="message-list" class="list-group">
         {% for id, message, is_deleted in messages %}
-            <li class="{{ 'deleted' if is_deleted else '' }}" data-id="{{ id }}">
+            <li class="list-group-item {{ 'deleted' if is_deleted else '' }}" data-id="{{ id }}">
                 <span class="message-text">{{ message }}</span> {% if is_deleted %}(投稿済み){% endif %}
-                <button class="edit-btn" onclick="editMessage('{{ id }}')">編集</button>
-                <form action="/edit/{{ id }}" method="post" class="edit-form" style="display:none;">
-                    <input type="text" name="new_message" value="{{ message }}" placeholder="新しいメッセージ">
-                    <button type="submit">更新</button>
-                    <button type="button" onclick="cancelEdit('{{ id }}')">キャンセル</button>
-                </form>
-                <form action="/delete/{{ id }}" method="post" style="display:inline;">
-                    <button type="submit">削除</button>
+                <button class="btn btn-sm btn-warning edit-btn" onclick="editMessage('{{ id }}')">編集</button>
+                <button class="btn btn-sm btn-danger delete-btn" onclick="deleteMessage('{{ id }}')">削除</button>
+                <form action="/edit/{{ id }}" method="post" class="edit-form" id="editForm-{{ id }}"
+                    style="display:none;">
+                    <input type="text" name="new_message" class="form-control d-inline w-75" value="{{ message }}"
+                        placeholder="新しいメッセージ" style="display: none;">
+                    <button type="submit" class="btn btn-sm btn-primary" style="display: none;">更新</button>
+                    <button type="button" class="btn btn-sm btn-secondary" style="display: none;"
+                        onclick="cancelEdit('{{ id }}')">キャンセル</button>
                 </form>
             </li>
         {% endfor %}
@@ -176,8 +172,8 @@
 
     {% with messages = get_flashed_messages() %}
       {% if messages %}
-        <div class="flash-message">
-          <ul>
+        <div class="alert alert-info flash-message">
+          <ul class="mb-0">
             {% for message in messages %}
               <li>{{ message }}</li>
             {% endfor %}
@@ -190,88 +186,11 @@
         </script>
       {% endif %}
     {% endwith %}
+</div> <!-- コンテナの閉じタグ -->
 
-    <script>
-        let isEditing = false;
-
-        function fetchMessages() {
-            if (isEditing) return;  // 編集中の場合は更新を止める
-            fetch('/messages')
-                .then(response => response.json())
-                .then(data => {
-                    const messageList = document.getElementById('message-list');
-                    messageList.innerHTML = '';
-                    data.forEach(message => {
-                        const li = document.createElement('li');
-                        li.dataset.id = message[0];
-                        li.innerHTML = `
-                            <span class="message-text">${message[1]}${message[2] ? ' (投稿済み)' : ''}</span>
-                            <button class="edit-btn" onclick="editMessage('${message[0]}')">編集</button>
-                            <form action="/edit/${message[0]}" method="post" class="edit-form" style="display:none;">
-                                <input type="text" name="new_message" value="${message[1]}" placeholder="新しいメッセージ" style="width: 700px; padding: 10px;">
-                                <button type="submit">更新</button>
-                                <button type="button" onclick="cancelEdit('${message[0]}')">キャンセル</button>
-                            </form>
-                            <form action="/delete/${message[0]}" method="post" style="display:inline;">
-                                <button type="submit">削除</button>
-                            </form>
-                        `;
-                        if (message[2]) {
-                            li.classList.add('deleted');
-                        }
-                        messageList.appendChild(li);
-                    });
-                });
-        }
-
-        function checkResetStatus() {
-            if (isEditing) return;  // 編集中の場合はリセットチェックを止める
-            fetch('/reset_status')
-                .then(response => response.json())
-                .then(data => {
-                    if (data.reset) {
-                        fetchMessages();  // リセットされた場合にメッセージ一覧を更新
-                    }
-                });
-        }
-
-        function editMessage(id) {
-            isEditing = true;
-            const li = document.querySelector(`li[data-id='${id}']`);
-            li.querySelector('.edit-form').style.display = 'inline';
-            li.querySelector('.message-text').style.display = 'none';
-            li.querySelector('.edit-btn').style.display = 'none';  // 編集ボタンを非表示にする
-        }
-
-        function cancelEdit(id) {
-            isEditing = false;
-            const li = document.querySelector(`li[data-id='${id}']`);
-            li.querySelector('.edit-form').style.display = 'none';
-            li.querySelector('.message-text').style.display = 'inline';
-            li.querySelector('.edit-btn').style.display = 'inline';  // 編集ボタンを表示する
-        }
-
-        function toggleIntervalType() {
-            const intervalType = document.getElementById('interval-type').value;
-            const intervalInput = document.getElementById('interval-input');
-            const specificInput = document.getElementById('specific-input');
-            
-            if (intervalType === 'interval') {
-                intervalInput.classList.remove('hidden');
-                specificInput.classList.add('hidden');
-            } else {
-                intervalInput.classList.add('hidden');
-                specificInput.classList.remove('hidden');
-            }
-        }
-
-        function removeSpecificTime(time) {
-            fetch(`/remove_specific_time?time=${time}`, { method: 'POST' })
-                .then(() => location.reload());
-        }
-
-        setInterval(fetchMessages, 3600000); // 1時間おきにメッセージを取得
-        setInterval(checkResetStatus, 3600000); // 1時間おきにリセットフラグをチェック
-    </script>
+<!-- 必要なJavaScriptファイルのインクルード -->
+<script src="https://ajax.googleapis.com/ajax/libs/jquery/3.5.1/jquery.min.js"></script>
+<script src="https://maxcdn.bootstrapcdn.com/bootstrap/4.5.2/js/bootstrap.min.js"></script>
+<script src="/static/js/script.js"></script>
 </body>
 </html>
