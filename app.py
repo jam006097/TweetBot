@@ -3,36 +3,36 @@ import os
 import tweepy
 import time
 import sqlite3
-from datetime import datetime
 import csv
-from werkzeug.utils import secure_filename
 import threading
-from dotenv import load_dotenv
 import logging
 from datetime import datetime, timedelta
+from werkzeug.utils import secure_filename
+from dotenv import load_dotenv
 
-# .envファイルから環境変数を読み込む
+# 環境変数の読み込み
 load_dotenv()
 
 app = Flask(__name__)
 app.secret_key = os.getenv('APP_SECRET_KEY')
 
 # ログ設定
-# logging.basicConfig(level=logging.ERROR)
-logging.basicConfig(filename='app.log', level=logging.DEBUG, format='%(asctime)s %(levelname)s %(message)s')
+logging.basicConfig(filename='app.log', level=logging.ERROR, format='%(asctime)s %(levelname)s %(message)s')
 
-# 初期値を設定
+# 定数の定義
+INTERVAL_IN_SECONDS = 3600  # 1時間
+CHECK_INTERVAL = 60  # 1分
+
+# グローバル変数の初期化
 reset_flag = False
 interval = 3
 specific_times = []
 is_auto_posting = False
 interval_type = 'interval'  # 初期値は時間間隔
 current_account_id = None
-auto_post_thread = None  # auto_post_threadの初期化
-# 定数の定義
-INTERVAL_IN_SECONDS = 3600  # 1時間
-CHECK_INTERVAL = 60  # 1分
+auto_post_thread = None
 
+# データベースの初期化
 def init_db():
     conn = sqlite3.connect('tweets.db')
     cursor = conn.cursor()
@@ -75,6 +75,34 @@ def init_db():
 
 init_db()
 
+# アカウント情報の読み込み
+def load_account(account_id):
+    global client, current_account_id, current_account
+    current_account_id = account_id
+    conn = sqlite3.connect('tweets.db')
+    cursor = conn.cursor()
+
+    cursor.execute("SELECT * FROM accounts WHERE id = ?", (account_id,))
+    current_account = cursor.fetchone()
+    logging.debug(f"Loaded Account: {current_account}")
+
+    if current_account:
+        try:
+            logging.debug(f"Consumer Key: {current_account[2]}, Consumer Secret: {current_account[3]}, Access Token: {current_account[5]}, Access Token Secret: {current_account[6]}, Bearer Token: {current_account[4]}")
+            client = tweepy.Client(
+                bearer_token=current_account[4],
+                consumer_key=current_account[2],
+                consumer_secret=current_account[3],
+                access_token=current_account[5],
+                access_token_secret=current_account[6]
+            )
+            logging.debug("Twitter client initialized successfully")
+        except Exception as e:
+            logging.error(f"Error initializing Twitter client: {e}")
+
+    conn.close()
+
+# 設定の読み込み
 def load_settings(account_id):
     global interval, specific_times, interval_type
     conn = sqlite3.connect('tweets.db')
@@ -93,32 +121,7 @@ def load_settings(account_id):
 
     conn.close()
 
-def load_account(account_id):
-    global client, current_account_id, current_account
-    current_account_id = account_id
-    conn = sqlite3.connect('tweets.db')
-    cursor = conn.cursor()
-
-    cursor.execute("SELECT * FROM accounts WHERE id = ?", (account_id,))
-    current_account = cursor.fetchone()
-    logging.debug(f"Loaded Account: {current_account}")
-    
-    if current_account:
-        try:
-            logging.debug(f"Consumer Key: {current_account[2]}, Consumer Secret: {current_account[3]}, Access Token: {current_account[5]}, Access Token Secret: {current_account[6]}, Bearer Token: {current_account[4]}")
-            client = tweepy.Client(
-                bearer_token=current_account[4],
-                consumer_key=current_account[2],
-                consumer_secret=current_account[3],
-                access_token=current_account[5],
-                access_token_secret=current_account[6]
-            )
-            logging.debug("Twitter client initialized successfully")
-        except Exception as e:
-            logging.error(f"Error initializing Twitter client: {e}")
-
-    conn.close()
-
+# 自動投稿スケジュールの更新
 def update_auto_post_schedule():
     global auto_post_thread
 
@@ -143,6 +146,7 @@ def update_auto_post_schedule():
     if auto_post_thread:
         auto_post_thread.start()
 
+# 次の投稿時間の計算
 def get_seconds_until_next_post(specific_times):
     now = datetime.now().time()
     future_times = [datetime.strptime(t, "%H:%M").time() for t in specific_times if datetime.strptime(t, "%H:%M").time() > now]
@@ -154,6 +158,64 @@ def get_seconds_until_next_post(specific_times):
     if next_post_time < datetime.now():
         next_post_time += timedelta(days=1)
     return (next_post_time - datetime.now()).total_seconds()
+
+# 自動投稿の実行関数
+def job():
+    try:
+        logging.debug("Job function started")
+        while is_auto_posting:
+            if interval_type == 'interval':
+                logging.debug("Posting message in interval mode")
+                post_message()
+                time.sleep(interval * INTERVAL_IN_SECONDS)
+            else:
+                current_time = datetime.now().strftime("%H:%M")
+                if current_time in specific_times:
+                    logging.debug(f"Posting message at specific time: {current_time}")
+                    post_message()
+                    time.sleep(CHECK_INTERVAL)
+                else:
+                    time.sleep(CHECK_INTERVAL)
+    except Exception as e:
+        logging.error(f"Error in job: {e}")
+
+# メッセージの投稿関数
+def post_message():
+    try:
+        logging.debug("Attempting to post message")
+        message = get_message_from_db()
+        if message:
+            logging.debug(f"Message to post: {message}")
+            response = client.create_tweet(text=message)
+            logging.debug(f"Tweet Response: {response}")
+            print(f"投稿完了: {message} at {datetime.now()}")
+            print(f"Tweet ID: {response.data['id']}")
+        else:
+            logging.debug("No message to post")
+    except tweepy.TweepyException as e:
+        logging.error(f"Error posting message: {e}")
+        print(f"エラーが発生しました: {e}")
+        if "duplicate" in str(e):
+            print("重複投稿エラーが発生しました。次のメッセージを試します。")
+            post_message()
+    except Exception as e:
+        logging.error(f"Unexpected error in post_message: {e}")
+
+# データベースからメッセージを取得
+def get_message_from_db():
+    try:
+        conn = sqlite3.connect('tweets.db')
+        cursor = conn.cursor()
+        cursor.execute("SELECT id, message FROM tweets WHERE is_deleted = 0 AND account_id = ? ORDER BY RANDOM() LIMIT 1", (current_account_id,))
+        result = cursor.fetchone()
+        if result:
+            cursor.execute("UPDATE tweets SET is_deleted = 1 WHERE id = ?", (result[0],))
+            conn.commit()
+        conn.close()
+        return result[1] if result else None
+    except Exception as e:
+        logging.error(f"Error fetching message from DB: {e}")
+        return None
 
 @app.route('/')
 def index():
@@ -252,6 +314,7 @@ def edit_account():
         """, (name, consumer_api_key, consumer_api_secret, bearer_token, access_token, access_token_secret, current_account_id))
 
         logging.debug(f"SQL Update Query executed for Account ID: {current_account_id}")
+
         conn.commit()
         conn.close()
         flash("アカウント情報が更新されました")
@@ -341,7 +404,6 @@ def start_auto_post():
     try:
         global is_auto_posting, current_account  # current_accountをグローバル変数として宣言
         is_auto_posting = True
-        flash("自動投稿実行中")
 
         logging.debug(f"Starting auto post with credentials: Bearer Token - {current_account[4]}, Consumer Key - {current_account[2]}, Access Token - {current_account[5]}")
 
@@ -351,6 +413,7 @@ def start_auto_post():
 
         # 自動投稿スケジュールの更新
         update_auto_post_schedule()
+        flash("自動投稿実行中")
     except Exception as e:
         logging.error(f"Error starting auto post: {e}")
         flash("自動投稿の開始中にエラーが発生しました")
@@ -361,7 +424,7 @@ def stop_auto_post():
     try:
         global is_auto_posting
         is_auto_posting = False
-        if auto_post_thread: 
+        if auto_post_thread:
             auto_post_thread.cancel()
         flash("自動投稿を停止しました")
     except Exception as e:
@@ -453,56 +516,5 @@ def upload():
         flash("CSVファイルのアップロード中にエラーが発生しました")
     return redirect(url_for('index'))
 
-def get_message_from_db():
-    try:
-        conn = sqlite3.connect('tweets.db')
-        cursor = conn.cursor()
-        cursor.execute("SELECT id, message FROM tweets WHERE is_deleted = 0 AND account_id = ? ORDER BY RANDOM() LIMIT 1", (current_account_id,))
-        result = cursor.fetchone()
-        if result:
-            cursor.execute("UPDATE tweets SET is_deleted = 1 WHERE id = ?", (result[0],))
-            conn.commit()
-        conn.close()
-        return result[1] if result else None
-    except Exception as e:
-        logging.error(f"Error fetching message from DB: {e}")
-        return None
-
-def post_message():
-    try:
-        message = get_message_from_db()
-        if message:
-            response = client.create_tweet(text=message)
-            logging.debug(f"Tweet Response: {response}")
-            print(f"投稿完了: {message} at {datetime.now()}")
-            print(f"Tweet ID: {response.data['id']}")
-    except tweepy.TweepyException as e:
-        logging.error(f"Error posting message: {e}")
-        print(f"エラーが発生しました: {e}")
-        if "duplicate" in str(e):
-            print("重複投稿エラーが発生しました。次のメッセージを試します。")
-            post_message()
-    except Exception as e:
-        logging.error(f"Unexpected error in post_message: {e}")
-
-def job():
-    try:
-        logging.debug("Job function started")
-        while is_auto_posting:
-            if interval_type == 'interval':
-                logging.debug("Posting message in interval mode")
-                post_message()
-                time.sleep(interval * INTERVAL_IN_SECONDS)  # 定数を使用
-            else:
-                current_time = datetime.now().strftime("%H:%M")
-                if current_time in specific_times:
-                    logging.debug(f"Posting message at specific time: {current_time}")
-                    post_message()
-                time.sleep(CHECK_INTERVAL)  # 定数を使用
-    except Exception as e:
-        logging.error(f"Error in job: {e}")
-
 if __name__ == '__main__':
     app.run(debug=True)
-
- 
