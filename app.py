@@ -516,5 +516,18 @@ def upload():
         flash("CSVファイルのアップロード中にエラーが発生しました")
     return redirect(url_for('index'))
 
+@app.route('/delete_all_messages', methods=['POST'])
+def delete_all_messages():
+    try:
+        conn = sqlite3.connect('tweets.db')
+        cursor = conn.cursor()
+        cursor.execute("DELETE FROM tweets WHERE account_id = ?", (current_account_id,))
+        conn.commit()
+        conn.close()
+        return jsonify({"success": True, "message": "すべてのメッセージが削除されました"})
+    except Exception as e:
+        logging.error(f"Error deleting all messages: {e}")
+        return jsonify({"success": False, "message": "すべてのメッセージの削除中にエラーが発生しました"})
+
 if __name__ == '__main__':
     app.run(debug=True)

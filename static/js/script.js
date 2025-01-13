@@ -69,9 +69,32 @@ function cancelEdit(id) {
 
 function deleteMessage(id) {
     fetch(`/delete/${id}`, { method: 'POST' })
-        .then(() => fetchMessages());  // メッセージを削除した後、メッセージ一覧を更新
+        .then(() => fetchMessages());  // メッセージを削除した後メッセージ一覧を更新
 }
 
+function deleteAllMessages() {
+    if (confirm("本当にすべてのメッセージを削除しますか？")) {
+        fetch('/delete_all_messages', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                alert(data.message);
+                // メッセージリストをクリア
+                document.getElementById('message-list').innerHTML = '';
+            } else {
+                alert(data.message);
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+        });
+    }
+}
 
 function toggleIntervalType() {
     const intervalType = document.getElementById('interval-type').value;
