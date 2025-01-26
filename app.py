@@ -17,7 +17,7 @@ app = Flask(__name__)
 app.secret_key = os.getenv('APP_SECRET_KEY')
 
 # ログ設定
-logging.basicConfig(filename='app.log', level=logging.ERROR, format='%(asctime)s %(levelname)s %(message)s')
+logging.basicConfig(filename='app.log', level=logging.DEBUG, format='%(asctime)s %(levelname)s %(message)s')
 
 # 定数の定義
 INTERVAL_IN_SECONDS = 3600  # 1時間
@@ -30,7 +30,7 @@ specific_times = []
 is_auto_posting = False
 interval_type = 'interval'  # 初期値は時間間隔
 current_account_id = None
-auto_post_thread = None
+auto_post_threads = {}  # アカウントごとのスレッドを管理する辞書
 
 # データベースの初期化
 def init_db():
@@ -84,11 +84,17 @@ def init_db():
 
 init_db()
 
+# SQLite3へのコネクション作成
+def get_db_connection():
+    conn = sqlite3.connect('tweets.db')
+    conn.row_factory = sqlite3.Row
+    return conn
+
 # アカウント情報の読み込み
 def load_account(account_id):
     global client, current_account_id, current_account
     current_account_id = account_id
-    conn = sqlite3.connect('tweets.db')
+    conn = get_db_connection() 
     cursor = conn.cursor()
 
     cursor.execute("SELECT * FROM accounts WHERE id = ?", (account_id,))
@@ -97,7 +103,7 @@ def load_account(account_id):
 
     if current_account:
         try:
-            logging.debug(f"Consumer Key: {current_account[2]}, Consumer Secret: {current_account[3]}, Access Token: {current_account[5]}, Access Token Secret: {current_account[6]}, Bearer Token: {current_account[4]}")
+            #logging.debug(f"Consumer Key: {current_account[2]}, Consumer Secret: {current_account[3]}, Access Token: {current_account[5]}, Access Token Secret: {current_account[6]}, Bearer Token: {current_account[4]}")
             client = tweepy.Client(
                 bearer_token=current_account[4],
                 consumer_key=current_account[2],
@@ -114,7 +120,7 @@ def load_account(account_id):
 # 設定の読み込み
 def load_settings(account_id):
     global interval, specific_times, interval_type
-    conn = sqlite3.connect('tweets.db')
+    conn = get_db_connection() 
     cursor = conn.cursor()
 
     cursor.execute("SELECT interval_type, interval, specific_time FROM settings WHERE account_id = ?", (account_id,))
@@ -127,12 +133,17 @@ def load_settings(account_id):
         else:
             specific_times = [setting[2] for setting in settings if setting[2]]
             interval = None
+    else:
+        # 設定が見つからない場合の初期値を設定
+        interval_type = 'interval'  # デフォルトの間隔タイプ
+        interval = 1  # デフォルトの間隔時間（例：1時間）
+        specific_times = []  # デフォルトの特定の時間は空
 
     conn.close()
 
 # 自動投稿状態の取得
 def load_auto_post_status(account_id):
-    conn = sqlite3.connect('tweets.db')
+    conn = get_db_connection()
     cursor = conn.cursor()
     cursor.execute('SELECT status FROM auto_post_status WHERE account_id = ?', (account_id,))
     status_row = cursor.fetchone()
@@ -141,29 +152,29 @@ def load_auto_post_status(account_id):
 
 
 # 自動投稿スケジュールの更新
-def update_auto_post_schedule():
-    global auto_post_thread
+def update_auto_post_schedule(account_id):
+    global auto_post_threads
 
-    logging.debug(f"Updating auto post schedule: interval_type={interval_type}, interval={interval}, specific_times={specific_times}")
+    logging.debug(f"Updating auto post schedule for account {account_id}: interval_type={interval_type}, interval={interval}, specific_times={specific_times}")
 
     # 現在のスレッドが存在し、動作中であればキャンセル
-    if auto_post_thread:
-        logging.debug(f"auto_post_thread exists: {auto_post_thread}")
-    if auto_post_thread and isinstance(auto_post_thread, threading.Thread):
-        logging.debug(f"auto_post_thread is a threading.Thread instance: {auto_post_thread.is_alive()}")
+    if account_id in auto_post_threads and auto_post_threads[account_id]:
+        logging.debug(f"auto_post_thread exists for account {account_id}: {auto_post_threads[account_id]}")
+    if account_id in auto_post_threads and isinstance(auto_post_threads[account_id], threading.Thread):
+        logging.debug(f"auto_post_thread is a threading.Thread instance for account {account_id}: {auto_post_threads[account_id].is_alive()}")
 
-    if auto_post_thread and isinstance(auto_post_thread, threading.Thread) and auto_post_thread.is_alive():
-        auto_post_thread.cancel()
+    if account_id in auto_post_threads and isinstance(auto_post_threads[account_id], threading.Thread) and auto_post_threads[account_id].is_alive():
+        auto_post_threads[account_id].cancel()
 
     # 新しいスケジュールの設定
     if interval_type == 'interval' and interval is not None:
-        auto_post_thread = threading.Timer(interval * INTERVAL_IN_SECONDS, job)
+        auto_post_threads[account_id] = threading.Timer(interval * INTERVAL_IN_SECONDS, lambda : job(account_id))
     elif interval_type == 'specific' and specific_times:
         next_post_time = get_seconds_until_next_post(specific_times)
-        auto_post_thread = threading.Timer(next_post_time, job)
+        auto_post_threads[account_id] = threading.Timer(next_post_time, lambda: job(account_id))
 
-    if auto_post_thread:
-        auto_post_thread.start()
+    if account_id in auto_post_threads and auto_post_threads[account_id]:
+        auto_post_threads[account_id].start()
 
 # 次の投稿時間の計算
 def get_seconds_until_next_post(specific_times):
@@ -179,30 +190,33 @@ def get_seconds_until_next_post(specific_times):
     return (next_post_time - datetime.now()).total_seconds()
 
 # 自動投稿の実行関数
-def job():
+def job(account_id):
     try:
-        logging.debug("Job function started")
+        logging.debug(f"Job function started for account {account_id}")
+        load_account(account_id)
+        load_settings(account_id)
+        is_auto_posting = load_auto_post_status(account_id)
         while is_auto_posting:
             if interval_type == 'interval':
                 logging.debug("Posting message in interval mode")
-                post_message()
+                post_message(account_id)
                 time.sleep(interval * INTERVAL_IN_SECONDS)
             else:
                 current_time = datetime.now().strftime("%H:%M")
                 if current_time in specific_times:
                     logging.debug(f"Posting message at specific time: {current_time}")
-                    post_message()
+                    post_message(account_id)
                     time.sleep(CHECK_INTERVAL)
                 else:
                     time.sleep(CHECK_INTERVAL)
     except Exception as e:
-        logging.error(f"Error in job: {e}")
+        logging.error(f"Error in job for account {account_id}: {e}")
 
 # メッセージの投稿関数
-def post_message():
+def post_message(account_id):
     try:
         logging.debug("Attempting to post message")
-        message = get_message_from_db()
+        message = get_message_from_db(account_id)
         if message:
             logging.debug(f"Message to post: {message}")
             response = client.create_tweet(text=message)
@@ -216,16 +230,17 @@ def post_message():
         print(f"エラーが発生しました: {e}")
         if "duplicate" in str(e):
             print("重複投稿エラーが発生しました。次のメッセージを試します。")
-            post_message()
+            post_message(account_id)
     except Exception as e:
-        logging.error(f"Unexpected error in post_message: {e}")
+        logging.error(f"Unexpected error in post_message for account {account_id}: {e}")
 
 # データベースからメッセージを取得
-def get_message_from_db():
+def get_message_from_db(account_id):
     try:
-        conn = sqlite3.connect('tweets.db')
+        conn = get_db_connection() 
         cursor = conn.cursor()
-        cursor.execute("SELECT id, message FROM tweets WHERE is_deleted = 0 AND account_id = ? ORDER BY RANDOM() LIMIT 1", (current_account_id,))
+        logging.debug(f"Fetching message for account ID: {account_id}")  # デバッグ用のログ
+        cursor.execute("SELECT id, message FROM tweets WHERE is_deleted = 0 AND account_id = ? ORDER BY RANDOM() LIMIT 1", (account_id,))
         result = cursor.fetchone()
         if result:
             cursor.execute("UPDATE tweets SET is_deleted = 1 WHERE id = ?", (result[0],))
@@ -233,13 +248,13 @@ def get_message_from_db():
         conn.close()
         return result[1] if result else None
     except Exception as e:
-        logging.error(f"Error fetching message from DB: {e}")
+        logging.error(f"Error fetching message from DB for account {account_id}: {e}")
         return None
 
 @app.route('/')
 def index():
-    global reset_flag
-    conn = sqlite3.connect('tweets.db')
+    global reset_flag, interval, specific_times, interval_type, current_account_id, current_account
+    conn = get_db_connection() 
     cursor = conn.cursor()
 
     # アカウント一覧を取得
@@ -285,7 +300,7 @@ def select_account():
     # 自動投稿の状態を取得
     is_auto_posting = load_auto_post_status(account_id)
 
-    update_auto_post_schedule()
+    update_auto_post_schedule(current_account_id)
     return redirect(url_for('index'))
 
 @app.route('/register_account', methods=['POST'])
@@ -404,7 +419,7 @@ def set_interval():
         conn.close()
 
         # 自動投稿スケジュールを更新
-        update_auto_post_schedule()
+        update_auto_post_schedule(current_account_id)
     except Exception as e:
         logging.error(f"Error setting interval: {e}")
         flash("投稿間隔の設定中にエラーが発生しました")
@@ -434,14 +449,14 @@ def start_auto_post():
         global is_auto_posting, current_account  # current_accountをグローバル変数として宣言
         is_auto_posting = True
 
-        logging.debug(f"Starting auto post with credentials: Bearer Token - {current_account[4]}, Consumer Key - {current_account[2]}, Access Token - {current_account[5]}")
+        # logging.debug(f"Starting auto post with credentials: Bearer Token - {current_account[4]}, Consumer Key - {current_account[2]}, Access Token - {current_account[5]}")
 
         # 現在のアカウント情報をログに出力
         logging.debug(f"Current account ID: {current_account_id}")
         logging.debug(f"Current account details: {current_account}")
 
         # 自動投稿スケジュールの更新
-        update_auto_post_schedule()
+        update_auto_post_schedule(current_account_id)
 
         # auto_post_statusテーブルにデータを保存
         conn = sqlite3.connect('tweets.db')
@@ -458,10 +473,11 @@ def start_auto_post():
 @app.route('/stop_auto_post')
 def stop_auto_post():
     try:
-        global is_auto_posting
+        global is_auto_posting, auto_post_threads
         is_auto_posting = False
-        if auto_post_thread:
-            auto_post_thread.cancel()
+
+        if current_account_id in auto_post_threads and auto_post_threads[current_account_id]:
+            auto_post_threads[current_account_id].cancel()
 
         # auto_post_statusテーブルにデータを保存
         conn = sqlite3.connect('tweets.db')
@@ -571,6 +587,23 @@ def delete_all_messages():
     except Exception as e:
         logging.error(f"Error deleting all messages: {e}")
         return jsonify({"success": False, "message": "すべてのメッセージの削除中にエラーが発生しました"})
+
+# 全てのアカウントの自動投稿状態をチェックして実行する関数
+def check_and_start_auto_post():
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute('SELECT account_id FROM auto_post_status WHERE status = 1')
+    accounts = cursor.fetchall()
+    conn.close()
+
+    for account in accounts:
+        account_id = account[0]
+        load_account(account_id)
+        load_settings(account_id)
+        update_auto_post_schedule(account_id)
+
+# アプリケーション起動時に全てのアカウントの自動投稿状態をチェック
+check_and_start_auto_post()
 
 if __name__ == '__main__':
     app.run(debug=True)
