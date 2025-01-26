@@ -70,6 +70,15 @@ def init_db():
     )
     ''')
 
+    # auto_post_statusテーブルを作成（存在しない場合は新規作成）
+    cursor.execute('''
+    CREATE TABLE IF NOT EXISTS auto_post_status (
+        account_id INTEGER PRIMARY KEY,
+        status BOOLEAN NOT NULL,
+        FOREIGN KEY (account_id) REFERENCES accounts (id)
+    )
+    ''')
+
     conn.commit()
     conn.close()
 
@@ -120,6 +129,16 @@ def load_settings(account_id):
             interval = None
 
     conn.close()
+
+# 自動投稿状態の取得
+def load_auto_post_status(account_id):
+    conn = sqlite3.connect('tweets.db')
+    cursor = conn.cursor()
+    cursor.execute('SELECT status FROM auto_post_status WHERE account_id = ?', (account_id,))
+    status_row = cursor.fetchone()
+    conn.close()
+    return status_row[0] if status_row else False
+
 
 # 自動投稿スケジュールの更新
 def update_auto_post_schedule():
@@ -229,11 +248,13 @@ def index():
 
     if current_account_id:
         load_settings(current_account_id)
+        is_auto_posting = load_auto_post_status(current_account_id)  # 自動投稿の状態を取得して設定
     else:
         # 最初のアカウントをデフォルトとして選択
         if accounts:
             load_account(accounts[0][0])
             load_settings(accounts[0][0])
+            is_auto_posting = load_auto_post_status(accounts[0][0])  
 
     # 全ての is_deleted フラグが1になった場合、全てのフラグを0にリセット
     cursor.execute("SELECT COUNT(*) FROM tweets WHERE is_deleted = 0 AND account_id = ?", (current_account_id,))
@@ -254,9 +275,17 @@ def index():
 
 @app.route('/select_account', methods=['POST'])
 def select_account():
+    global current_account_id, is_auto_posting
     account_id = request.form['account_id']
+    current_account_id = account_id
+
     load_account(account_id)
     load_settings(account_id)
+
+    # 自動投稿の状態を取得
+    is_auto_posting = load_auto_post_status(account_id)
+
+    update_auto_post_schedule()
     return redirect(url_for('index'))
 
 @app.route('/register_account', methods=['POST'])
@@ -413,6 +442,13 @@ def start_auto_post():
 
         # 自動投稿スケジュールの更新
         update_auto_post_schedule()
+
+        # auto_post_statusテーブルにデータを保存
+        conn = sqlite3.connect('tweets.db')
+        conn.execute('INSERT OR REPLACE INTO auto_post_status (account_id, status) VALUES (?, ?)', (current_account_id, True))
+        conn.commit()
+        conn.close()
+
         flash("自動投稿実行中")
     except Exception as e:
         logging.error(f"Error starting auto post: {e}")
@@ -426,6 +462,13 @@ def stop_auto_post():
         is_auto_posting = False
         if auto_post_thread:
             auto_post_thread.cancel()
+
+        # auto_post_statusテーブルにデータを保存
+        conn = sqlite3.connect('tweets.db')
+        conn.execute('INSERT OR REPLACE INTO auto_post_status (account_id, status) VALUES (?, ?)', (current_account_id, False))
+        conn.commit()
+        conn.close()
+
         flash("自動投稿を停止しました")
     except Exception as e:
         logging.error(f"Error stopping auto post: {e}")

@@ -42,6 +42,15 @@ CREATE TABLE IF NOT EXISTS accounts (
 )
 ''')
 
+# auto_post_statusテーブルを作成（存在しない場合は新規作成）
+cursor.execute('''
+CREATE TABLE IF NOT EXISTS auto_post_status (
+    account_id INTEGER PRIMARY KEY,
+    status BOOLEAN NOT NULL,
+    FOREIGN KEY (account_id) REFERENCES accounts (id)
+)
+''')
+
 # 変更を保存
 conn.commit()
 conn.close()

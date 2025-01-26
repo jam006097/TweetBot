@@ -38,13 +38,21 @@
     <div class="tab-content">
         <!-- アカウント選択タブ -->
         <div id="select-account" class="tab-pane fade show active">
+            <!-- 現在選択中のアカウント名を表示する要素 -->
+            <div id="selected-account" class="mt-4">
+                <h2>選択中のアカウント</h2>
+                <p>アカウント名: {{ current_account[1] if current_account else 'なし' }}</p>
+            </div>
+
             <h2>アカウント選択</h2>
-            <form action="/select_account" method="post" class="form-inline">
+            <form action="/select_account" method="post" class="form-inline" onsubmit="return false;">
                 <div class="form-group">
                     <label for="account_id" class="mr-2">アカウント:</label>
                     <select name="account_id" id="account_id" class="form-control" onchange="this.form.submit()">
+                        <option value="">--選択してください--</option>
                         {% for account in accounts %}
-                            <option value="{{ account[0] }}" {% if account[0] == current_account_id %}selected{% endif %}>{{ account[1] }}</option>
+                        <option value="{{ account[0] }}" {% if account[0]==current_account_id %}selected{% endif %}>{{ account[1] }}
+                        </option>
                         {% endfor %}
                     </select>
                 </div>
