@@ -7,6 +7,9 @@
     <link href="https://maxcdn.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css" rel="stylesheet">
     <!-- カスタムCSSを追加 -->
     <link href="/static/css/style.css" rel="stylesheet">
+    <!-- 必要なJavaScriptファイルのインクルード -->
+    <script src="https://code.jquery.com/jquery-3.5.1.slim.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@4.5.3/dist/js/bootstrap.bundle.min.js"></script>
 </head>
 <body>
 <div class="container">
@@ -41,18 +44,17 @@
             <!-- 現在選択中のアカウント名を表示する要素 -->
             <div id="selected-account" class="mt-4">
                 <h2>選択中のアカウント</h2>
-                <p>アカウント名: {{ current_account[1] if current_account else 'なし' }}</p>
+                <p>アカウント名: {{ current_account['name'] if current_account else 'なし' }}</p>
             </div>
 
             <h2>アカウント選択</h2>
-            <form action="/select_account" method="post" class="form-inline" onsubmit="return false;">
+            <form action="/select_account" method="post" class="form-inline">
                 <div class="form-group">
                     <label for="account_id" class="mr-2">アカウント:</label>
                     <select name="account_id" id="account_id" class="form-control" onchange="this.form.submit()">
                         <option value="">--選択してください--</option>
                         {% for account in accounts %}
-                        <option value="{{ account[0] }}" {% if account[0]==current_account_id %}selected{% endif %}>{{ account[1] }}
-                        </option>
+                        <option value="{{ account['id'] }}" {% if account['id']==current_account_id %}selected{% endif %}>{{ account['name'] }}</option>
                         {% endfor %}
                     </select>
                 </div>
@@ -63,27 +65,27 @@
             <form action="/edit_account" method="post">
                 <div class="form-group">
                     <label>アカウント名:</label>
-                    <input type="text" name="name" class="form-control" value="{{ current_account[1] }}" required>
+                    <input type="text" name="name" class="form-control" value="{{ current_account['name'] }}" required>
                 </div>
                 <div class="form-group">
                     <label>Consumer API Key:</label>
-                    <input type="text" name="consumer_api_key" class="form-control" value="{{ current_account[2] }}" required>
+                    <input type="text" name="consumer_api_key" class="form-control" value="{{ current_account['consumer_api_key'] }}" required>
                 </div>
                 <div class="form-group">
                     <label>Consumer API Secret:</label>
-                    <input type="text" name="consumer_api_secret" class="form-control" value="{{ current_account[3] }}" required>
+                    <input type="text" name="consumer_api_secret" class="form-control" value="{{ current_account['consumer_api_secret'] }}" required>
                 </div>
                 <div class="form-group">
                     <label>Bearer Token:</label>
-                    <input type="text" name="bearer_token" class="form-control" value="{{ current_account[4] }}" required>
+                    <input type="text" name="bearer_token" class="form-control" value="{{ current_account['bearer_token'] }}" required>
                 </div>
                 <div class="form-group">
                     <label>Access Token:</label>
-                    <input type="text" name="access_token" class="form-control" value="{{ current_account[5] }}" required>
+                    <input type="text" name="access_token" class="form-control" value="{{ current_account['access_token'] }}" required>
                 </div>
                 <div class="form-group">
                     <label>Access Token Secret:</label>
-                    <input type="text" name="access_token_secret" class="form-control" value="{{ current_account[6] }}" required>
+                    <input type="text" name="access_token_secret" class="form-control" value="{{ current_account['access_token_secret'] }}" required>
                 </div>
                 <button type="submit" class="btn btn-primary">更新</button>
             </form>
@@ -146,28 +148,26 @@
                     </select>
                 </div>
 
-                <div id="interval-input" class="form-group interval-setting {% if interval_type != 'interval' %}hidden{% endif %}">
+                <div id="interval-input" class="form-group interval-setting {% if interval_type != 'interval' %}d-none{% endif %}">
                     <label>投稿間隔 (時間):</label>
                     <input type="number" name="interval" class="form-control" placeholder="投稿間隔(時間)" min="1" value="{{ interval }}">
                 </div>
 
-                <div id="specific-input" class="form-group interval-setting {% if interval_type != 'specific' %}hidden{% endif %}">
+                <div id="specific-times-input" class="form-group interval-setting {% if interval_type != 'specific' %}d-none{% endif %}">
                     <label>時間指定:</label>
-                    {% for time in specific_times %}
+                    <div id="specific-times-list">
+                        {% for time in specific_times %}
                         <div class="input-group mb-2">
                             <input type="time" name="specific_times" class="form-control" value="{{ time }}">
                             <div class="input-group-append">
-                                <button type="button" class="btn btn-outline-danger" onclick="removeSpecificTime('{{ time }}')">削除</button>
+                                <button type="button" class="btn btn-danger" onclick="removeSpecificTime(this)">削除</button>
                             </div>
                         </div>
-                    {% endfor %}
-                    {% for _ in range(3 - specific_times|length) %}
-                        <div class="input-group mb-2">
-                            <input type="time" name="specific_times" class="form-control">
-                        </div>
-                    {% endfor %}
+                        {% endfor %}
+                    </div>
+                    <button type="button" class="btn btn-secondary" onclick="addSpecificTime()">時間を追加</button>
                 </div>
-                
+
                 <button type="submit" class="btn btn-primary">設定を保存</button>
             </form>
 
@@ -191,7 +191,7 @@
             <h2 class="mt-4">メッセージ追加</h2>
             <form action="/post" method="post">
                 <div class="input-group mb-3">
-                    <input type="text" name="message" class="form-control" placeholder="メッセージを入力">
+                    <input type="text" name="message" class="form-control" placeholder="メッセージを入力" required>
                     <div class="input-group-append">
                         <button type="submit" class="btn btn-primary">メッセージを追加</button>
                     </div>
@@ -199,49 +199,56 @@
             </form>
 
             <h2 class="mt-4">メッセージ一括削除</h2>
-            <form action="/delete_all_messages" method="post" class="mt-3"> 
-                <button type="button" class="btn btn-danger" onclick="deleteAllMessages()">すべてのメッセージを削除</button>
-            </form>
+            <button type="button" class="btn btn-danger" onclick="deleteAllMessages()">すべてのメッセージを削除</button>
 
             <h2 class="mt-4">メッセージ一覧</h2>
             <ul id="message-list" class="list-group">
-                {% for id, message, is_deleted in messages %}
-                    <li class="list-group-item {{ 'deleted' if is_deleted else '' }}" data-id="{{ id }}">
-                        <span class="message-text">{{ message }}</span> {% if is_deleted %}(投稿済み){% endif %}
-                        <button class="btn btn-sm btn-warning edit-btn" onclick="editMessage('{{ id }}')">編集</button>
-                        <button class="btn btn-sm btn-danger delete-btn" onclick="deleteMessage('{{ id }}');">削除</button>
-                        <form action="/edit/{{ id }}" method="post" class="edit-form" id="editForm-{{ id }}" style="display:none;">
-                            <input type="text" name="new_message" class="form-control d-inline w-75" value="{{ message }}" placeholder="新しいメッセージ" style="display: none;">
-                            <button type="submit" class="btn btn-sm btn-primary" style="display: none;">更新</button>
-                            <button type="button" class="btn btn-sm btn-secondary" style="display: none;" onclick="cancelEdit('{{ id }}')">キャンセル</button>
-                        </form>
-                    </li>
+                {% for message in messages %}
+                <li class="list-group-item {{ 'deleted' if message['is_deleted'] else '' }}" data-id="{{ message['id'] }}">
+                    <span class="message-text">{{ message['message'] }}</span> {% if message['is_deleted'] %}(投稿済み){% endif %}
+                    <button
+                        class="btn btn-sm btn-warning edit-btn"
+                        data-id="{{ message['id'] }}"
+                        data-message="{{ message['message']|e }}"
+                        onclick="editMessage(this)">編集</button>
+                    <form action="/delete/{{ message['id'] }}" method="post" style="display:inline;">
+                        <button type="submit" class="btn btn-sm btn-danger">削除</button>
+                    </form>
+                    <form action="/edit/{{ message['id'] }}" method="post" class="edit-form" id="editForm-{{ message['id'] }}" style="display:none;">
+                        <input type="text" name="new_message" class="form-control d-inline w-75" value="{{ message['message']|e }}" placeholder="新しいメッセージ" style="display: none;">
+                        <button type="submit" class="btn btn-sm btn-primary" style="display: none;">更新</button>
+                        <button
+                            type="button"
+                            class="btn btn-sm btn-secondary"
+                            style="display: none;"
+                            data-id="{{ message['id'] }}"
+                            onclick="cancelEdit(this)">キャンセル</button>
+                    </form>
+                </li>
                 {% endfor %}
             </ul>
         </div>
     </div>
 
     {% with messages = get_flashed_messages() %}
-      {% if messages %}
+    {% if messages %}
         <div class="alert alert-info flash-message">
-          <ul class="mb-0">
-            {% for message in messages %}
-              <li>{{ message }}</li>
-            {% endfor %}
-          </ul>
+            <ul class="mb-0">
+                {% for message in messages %}
+                    <li>{{ message }}</li>
+                {% endfor %}
+            </ul>
         </div>
         <script>
-          setTimeout(function() {
-              document.querySelector('.flash-message').style.display = 'none';
-          }, 3000);  // 3秒後にメッセージを非表示にする
+            setTimeout(function() {
+                document.querySelector('.flash-message').style.display = 'none';
+            }, 3000);  // 3秒後にメッセージを非表示にする
         </script>
-      {% endif %}
+    {% endif %}
     {% endwith %}
 </div> <!-- コンテナの閉じタグ -->
 
-<!-- 必要なJavaScriptファイルのインクルード -->
-<script src="https://ajax.googleapis.com/ajax/libs/jquery/3.5.1/jquery.min.js"></script>
-<script src="https://maxcdn.bootstrapcdn.com/bootstrap/4.5.2/js/bootstrap.min.js"></script>
+<!-- カスタムJavaScriptファイルのインクルード -->
 <script src="/static/js/script.js"></script>
 </body>
 </html>

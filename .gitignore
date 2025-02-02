@@ -109,3 +109,4 @@ dmypy.json
 
 # .gitignore
 tweets.db
+*.img
