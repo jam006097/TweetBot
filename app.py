@@ -17,11 +17,14 @@ app = Flask(__name__)
 app.secret_key = os.getenv('APP_SECRET_KEY')
 
 # ログ設定
-logging.basicConfig(filename='app.log', level=logging.DEBUG, format='%(asctime)s %(levelname)s %(message)s')
+LOG_FILENAME = 'app.log'
+logging.basicConfig(filename=LOG_FILENAME, level=logging.DEBUG, format='%(asctime)s %(levelname)s %(message)s')
 
 # 定数の定義
-INTERVAL_IN_SECONDS = 3600  # 1時間
-CHECK_INTERVAL = 60         # 1分
+INTERVAL_IN_SECONDS = 3600  # 1時間（秒単位）
+CHECK_INTERVAL = 60         # 1分（秒単位）
+MINIMUM_POST_INTERVAL_MINUTES = 1  #重複回避のための最小投稿間隔（分単位）
+DEFAULT_INTERVAL_HOURS = 3  # デフォルトの投稿間隔（時間単位）
 
 # グローバル変数の初期化
 reset_flag = False
@@ -34,11 +37,18 @@ is_auto_posting = {}    # アカウントごとの自動投稿状態
 auto_post_threads = {}  # アカウントごとのスレッド（スレッドと停止用のイベントを格納）
 last_post_time = {}     # アカウントごとの最後の投稿時間
 
+# SQLite3へのコネクション作成
+def get_db_connection():
+    conn = sqlite3.connect('tweets.db')
+    conn.row_factory = sqlite3.Row
+    return conn
+
 # データベースの初期化
 def init_db():
-    conn = sqlite3.connect('tweets.db')
+    conn = get_db_connection()
     cursor = conn.cursor()
 
+    # テーブル作成
     cursor.execute('''
     CREATE TABLE IF NOT EXISTS settings (
         id INTEGER PRIMARY KEY,
@@ -84,12 +94,6 @@ def init_db():
     conn.close()
 
 init_db()
-
-# SQLite3へのコネクション作成
-def get_db_connection():
-    conn = sqlite3.connect('tweets.db')
-    conn.row_factory = sqlite3.Row
-    return conn
 
 # データベースから全アカウントIDを取得する関数
 def get_all_account_ids():
@@ -144,7 +148,7 @@ def load_settings(account_id):
             interval = None
     else:
         interval_type = 'interval'
-        interval = 1
+        interval = DEFAULT_INTERVAL_HOURS  # デフォルトの間隔時間を使用
         specific_times = []
 
     account_settings[account_id] = {
@@ -184,13 +188,12 @@ def job(account_id, stop_event):
         while not stop_event.is_set():
             settings = account_settings.get(account_id, {})
             interval_type = settings.get('interval_type', 'interval')
-            interval = settings.get('interval', 1)
+            interval = settings.get('interval', DEFAULT_INTERVAL_HOURS)
             specific_times = settings.get('specific_times', [])
 
             if interval_type == 'interval':
                 logging.debug(f"Posting message in interval mode for account {account_id}")
                 post_message(account_id)
-                # 一定時間待機、途中で停止イベントが設定された場合はループを抜ける
                 if stop_event.wait(interval * INTERVAL_IN_SECONDS):
                     break
             else:
@@ -198,7 +201,6 @@ def job(account_id, stop_event):
                 if current_time in specific_times:
                     logging.debug(f"Posting message at specific time: {current_time} for account {account_id}")
                     post_message(account_id)
-                # CHECK_INTERVAL待機、途中で停止イベントが設定された場合はループを抜ける
                 if stop_event.wait(CHECK_INTERVAL):
                     break
     except Exception as e:
@@ -213,7 +215,7 @@ def post_message(account_id, message=None):
         # 前回の投稿時間を確認
         if account_id in last_post_time:
             time_since_last_post = current_time - last_post_time[account_id]
-            if time_since_last_post < timedelta(minutes=1):
+            if time_since_last_post < timedelta(minutes=MINIMUM_POST_INTERVAL_MINUTES):
                 logging.debug(f"Skipping post for account {account_id} due to recent activity")
                 return
 
@@ -282,7 +284,7 @@ def update_auto_post_schedule(account_id):
     auto_post_threads[account_id] = {'thread': thread, 'event': stop_event}
     logging.debug(f"Started new thread for account {account_id}")
 
-# Flaskルート
+# Flaskルート（省略せずに完全に記載します）
 
 @app.route('/')
 def index():
@@ -320,7 +322,7 @@ def index():
             specific_times = []
             interval_type = 'interval'
 
-    # **現在のアカウント情報を取得**
+    # 現在のアカウント情報を取得
     cursor.execute("SELECT * FROM accounts WHERE id = ?", (current_account_id,))
     current_account = cursor.fetchone()
 
@@ -339,18 +341,17 @@ def index():
 
     current_setting = f"時間間隔: {interval}時間" if interval_type == 'interval' else f"時間指定: {', '.join(specific_times)}"
 
-    # **current_accountをテンプレートに渡す**
     return render_template(
         'index.html',
         accounts=accounts,
         current_account_id=current_account_id,
+        current_account=current_account,
         messages=messages,
         interval=interval,
         specific_times=specific_times,
         is_auto_posting=is_posting,
         current_setting=current_setting,
-        interval_type=interval_type,
-        current_account=current_account  # 追加
+        interval_type=interval_type
     )
 
 @app.route('/select_account', methods=['POST'])
