@@ -22,7 +22,7 @@ function fetchMessages() {
                         data-message="${message.message}"
                         onclick="editMessage(this)">編集</button>
                     <form action="/delete/${message.id}" method="post" style="display:inline;">
-                        <button type="submit" class="btn btn-sm btn-danger">削除</button>
+                        <button type="submit" class="btn btn-sm btn-danger delete-btn">削除</button>
                     </form>
                     <form action="/edit/${message.id}" method="post" class="edit-form" id="editForm-${message.id}" style="display:none;">
                         <input type="text" name="new_message" class="form-control d-inline w-75" value="${message.message}" placeholder="新しいメッセージ" style="display: none;">
@@ -59,7 +59,7 @@ function editMessage(button) {
     const li = document.querySelector(`li[data-id='${id}']`);
     li.querySelector('.message-text').style.display = 'none';
     li.querySelector('.edit-btn').style.display = 'none';
-    li.querySelector('form[action="/delete/' + id + '"] button').style.display = 'none';
+    li.querySelector('.delete-btn').style.display = 'none';
 
     const form = li.querySelector('.edit-form');
     form.style.display = 'block';
@@ -78,7 +78,7 @@ function cancelEdit(button) {
     const li = document.querySelector(`li[data-id='${id}']`);
     li.querySelector('.message-text').style.display = 'inline';
     li.querySelector('.edit-btn').style.display = 'inline';
-    li.querySelector('form[action="/delete/' + id + '"] button').style.display = 'inline';
+    li.querySelector('.delete-btn').style.display = 'inline';
 
     const form = li.querySelector('.edit-form');
     form.style.display = 'none';
@@ -139,7 +139,22 @@ function removeSpecificTime(button) {
     button.parentElement.parentElement.remove();
 }
 
-document.addEventListener('DOMContentLoaded', function() {
+// アクティブなタブを保存
+$('a[data-toggle="tab"]').on('shown.bs.tab', function (e) {
+    localStorage.setItem('activeTab', $(e.target).attr('href'));
+});
+
+// ページ読み込み時にアクティブなタブを復元
+$(document).ready(function () {
+    var activeTab = localStorage.getItem('activeTab');
+    if (activeTab) {
+        $('.nav-tabs a[href="' + activeTab + '"]').tab('show');
+    } else {
+        // デフォルトで最初のタブを表示
+        $('.nav-tabs a:first').tab('show');
+    }
+
+    // 初期化処理
     toggleIntervalType();
     fetchMessages();
 });

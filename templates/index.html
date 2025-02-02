@@ -8,7 +8,9 @@
     <!-- カスタムCSSを追加 -->
     <link href="/static/css/style.css" rel="stylesheet">
     <!-- 必要なJavaScriptファイルのインクルード -->
-    <script src="https://code.jquery.com/jquery-3.5.1.slim.min.js"></script>
+    <!-- jQueryをslim版からmin版に変更 -->
+    <script src="https://code.jquery.com/jquery-3.5.1.min.js"></script>
+    <!-- BootstrapのJS -->
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@4.5.3/dist/js/bootstrap.bundle.min.js"></script>
 </head>
 <body>
@@ -212,7 +214,7 @@
                         data-message="{{ message['message']|e }}"
                         onclick="editMessage(this)">編集</button>
                     <form action="/delete/{{ message['id'] }}" method="post" style="display:inline;">
-                        <button type="submit" class="btn btn-sm btn-danger">削除</button>
+                        <button type="submit" class="btn btn-sm btn-danger delete-btn">削除</button>
                     </form>
                     <form action="/edit/{{ message['id'] }}" method="post" class="edit-form" id="editForm-{{ message['id'] }}" style="display:none;">
                         <input type="text" name="new_message" class="form-control d-inline w-75" value="{{ message['message']|e }}" placeholder="新しいメッセージ" style="display: none;">
