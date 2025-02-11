@@ -29,6 +29,8 @@ DEFAULT_INTERVAL_HOURS = 3  # デフォルトの投稿間隔（時間単位）
 # グローバル変数の初期化
 reset_flag = False
 current_account_id = None
+post_lock = threading.Lock()  # 追加: 投稿用のロック
+post_disable_until = {}  # 追加: アカウントごとの投稿停止時間
 
 # アカウントごとのデータを管理する辞書
 clients = {}            # アカウントごとのTwitterクライアント
@@ -209,8 +211,16 @@ def job(account_id, stop_event):
 # メッセージの投稿関数
 def post_message(account_id, message=None):
     try:
-        logging.debug(f"Attempting to post message for account {account_id}")
+        if not post_lock.acquire(blocking=False):
+            logging.debug(f"Skipping post for account {account_id} due to lock")
+            return
+
         current_time = datetime.now()
+        if account_id in post_disable_until and current_time < post_disable_until[account_id]:
+            logging.debug(f"Skipping post for account {account_id} due to temporary disable")
+            return
+
+        logging.debug(f"Attempting to post message for account {account_id}")
 
         # 前回の投稿時間を確認
         if account_id in last_post_time:
@@ -231,6 +241,7 @@ def post_message(account_id, message=None):
                 print(f"投稿完了: {message} for account {account_id} at {datetime.now()}")
                 print(f"Tweet ID for account {account_id}: {response.data['id']}")
                 last_post_time[account_id] = current_time
+                post_disable_until[account_id] = current_time + timedelta(minutes=1)  # 1分間投稿停止
             else:
                 logging.error(f"No Twitter client available for account {account_id}")
         else:
@@ -245,6 +256,8 @@ def post_message(account_id, message=None):
                 post_message(account_id, message=next_message)
     except Exception as e:
         logging.error(f"Unexpected error in post_message for account {account_id}: {e}")
+    finally:
+        post_lock.release()
 
 # データベースからメッセージを取得
 def get_message_from_db(account_id):
@@ -612,7 +625,9 @@ def upload():
                 conn.close()
             flash('CSVファイルのメッセージが追加されました')
             if failed_messages:
-                flash(f"重複のため保存できなかったメッセージ: {', '.join(failed_messages)}")
+                # Limit the size of the flash message
+                failed_message_preview = ', '.join(failed_messages[:5])
+                flash(f"重複のため保存できなかったメッセージ: {failed_message_preview} 他 {len(failed_messages) - 5} 件" if len(failed_messages) > 5 else f"重複のため保存できなかったメッセージ: {failed_message_preview}")
         else:
             flash('無効なファイル形式です。CSVファイルをアップロードしてください')
     except Exception as e:
