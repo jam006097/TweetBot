@@ -23,7 +23,7 @@ logging.basicConfig(filename=LOG_FILENAME, level=logging.DEBUG, format='%(asctim
 # 定数の定義
 INTERVAL_IN_SECONDS = 3600  # 1時間（秒単位）
 CHECK_INTERVAL = 60         # 1分（秒単位）
-MINIMUM_POST_INTERVAL_MINUTES = 1  #重複回避のための最小投稿間隔（分単位）
+MINIMUM_POST_INTERVAL_MINUTES = 10  # 重複回避のための最小投稿間隔（分単位）を10分に変更
 DEFAULT_INTERVAL_HOURS = 3  # デフォルトの投稿間隔（時間単位）
 
 # グローバル変数の初期化
@@ -193,15 +193,24 @@ def job(account_id, stop_event):
             interval = settings.get('interval', DEFAULT_INTERVAL_HOURS)
             specific_times = settings.get('specific_times', [])
 
+            current_time = datetime.now()
+            if account_id in last_post_time:
+                time_since_last_post = current_time - last_post_time[account_id]
+                if time_since_last_post < timedelta(minutes=MINIMUM_POST_INTERVAL_MINUTES):
+                    logging.debug(f"Skipping job for account {account_id} due to recent activity")
+                    if stop_event.wait(CHECK_INTERVAL):
+                        break
+                    continue
+
             if interval_type == 'interval':
                 logging.debug(f"Posting message in interval mode for account {account_id}")
                 post_message(account_id)
                 if stop_event.wait(interval * INTERVAL_IN_SECONDS):
                     break
             else:
-                current_time = datetime.now().strftime("%H:%M")
-                if current_time in specific_times:
-                    logging.debug(f"Posting message at specific time: {current_time} for account {account_id}")
+                current_time_str = current_time.strftime("%H:%M")
+                if current_time_str in specific_times:
+                    logging.debug(f"Posting message at specific time: {current_time_str} for account {account_id}")
                     post_message(account_id)
                 if stop_event.wait(CHECK_INTERVAL):
                     break
@@ -241,7 +250,7 @@ def post_message(account_id, message=None):
                 print(f"投稿完了: {message} for account {account_id} at {datetime.now()}")
                 print(f"Tweet ID for account {account_id}: {response.data['id']}")
                 last_post_time[account_id] = current_time
-                post_disable_until[account_id] = current_time + timedelta(minutes=1)  # 1分間投稿停止
+                post_disable_until[account_id] = current_time + timedelta(minutes=MINIMUM_POST_INTERVAL_MINUTES)  # 10分間投稿停止
             else:
                 logging.error(f"No Twitter client available for account {account_id}")
         else:
@@ -663,3 +672,4 @@ check_and_start_auto_post()
 
 if __name__ == '__main__':
     app.run(debug=True)
+
