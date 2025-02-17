@@ -113,7 +113,7 @@ def load_account(account_id):
 
     cursor.execute("SELECT * FROM accounts WHERE id = ?", (account_id,))
     account = cursor.fetchone()
-    logging.debug(f"Loaded Account: {account}")
+    logging.debug(f"アカウントを読み込みました: {account}")
 
     if account:
         try:
@@ -125,11 +125,11 @@ def load_account(account_id):
                 access_token_secret=account['access_token_secret']
             )
             clients[account_id] = client
-            logging.debug(f"Twitter client initialized successfully for account {account_id}")
+            logging.debug(f"Twitterクライアントの初期化に成功しました: アカウント {account_id}")
         except Exception as e:
-            logging.error(f"Error initializing Twitter client for account {account_id}: {e}")
+            logging.error(f"Twitterクライアントの初期化中にエラーが発生しました: アカウント {account_id}: {e}")
     else:
-        logging.error(f"Account not found for account_id {account_id}")
+        logging.error(f"アカウントが見つかりません: アカウントID {account_id}")
 
     conn.close()
 
@@ -186,7 +186,7 @@ def get_seconds_until_next_post(specific_times):
 # 自動投稿の実行関数
 def job(account_id, stop_event):
     try:
-        logging.debug(f"Job function started for account {account_id}")
+        logging.debug(f"ジョブ関数が開始されました: アカウント {account_id}")
         while not stop_event.is_set():
             settings = account_settings.get(account_id, {})
             interval_type = settings.get('interval_type', 'interval')
@@ -197,74 +197,74 @@ def job(account_id, stop_event):
             if account_id in last_post_time:
                 time_since_last_post = current_time - last_post_time[account_id]
                 if time_since_last_post < timedelta(minutes=MINIMUM_POST_INTERVAL_MINUTES):
-                    logging.debug(f"Skipping job for account {account_id} due to recent activity")
+                    logging.debug(f"最近の活動のためジョブをスキップします: アカウント {account_id}")
                     if stop_event.wait(CHECK_INTERVAL):
                         break
                     continue
 
             if interval_type == 'interval':
-                logging.debug(f"Posting message in interval mode for account {account_id}")
+                logging.debug(f"インターバルモードでメッセージを投稿します: アカウント {account_id}")
                 post_message(account_id)
                 if stop_event.wait(interval * INTERVAL_IN_SECONDS):
                     break
             else:
                 current_time_str = current_time.strftime("%H:%M")
                 if current_time_str in specific_times:
-                    logging.debug(f"Posting message at specific time: {current_time_str} for account {account_id}")
+                    logging.debug(f"指定時間にメッセージを投稿します: {current_time_str} アカウント {account_id}")
                     post_message(account_id)
                 if stop_event.wait(CHECK_INTERVAL):
                     break
     except Exception as e:
-        logging.error(f"Error in job for account {account_id}: {e}")
+        logging.error(f"ジョブでエラーが発生しました: アカウント {account_id}: {e}")
 
 # メッセージの投稿関数
 def post_message(account_id, message=None):
     try:
         if not post_lock.acquire(blocking=False):
-            logging.debug(f"Skipping post for account {account_id} due to lock")
+            logging.debug(f"ロックのため投稿をスキップします: アカウント {account_id}")
             return
 
         current_time = datetime.now()
         if account_id in post_disable_until and current_time < post_disable_until[account_id]:
-            logging.debug(f"Skipping post for account {account_id} due to temporary disable")
+            logging.debug(f"一時的な停止のため投稿をスキップします: アカウント {account_id}")
             return
 
-        logging.debug(f"Attempting to post message for account {account_id}")
+        logging.debug(f"メッセージを投稿しようとしています: アカウント {account_id}")
 
         # 前回の投稿時間を確認
         if account_id in last_post_time:
             time_since_last_post = current_time - last_post_time[account_id]
             if time_since_last_post < timedelta(minutes=MINIMUM_POST_INTERVAL_MINUTES):
-                logging.debug(f"Skipping post for account {account_id} due to recent activity")
+                logging.debug(f"最近の活動のため投稿をスキップします: アカウント {account_id}")
                 return
 
         if not message:
             message = get_message_from_db(account_id)
 
         if message:
-            logging.debug(f"Message to post for account {account_id}: {message}")
+            logging.debug(f"投稿するメッセージ: アカウント {account_id}: {message}")
             client = clients.get(account_id)
             if client:
                 response = client.create_tweet(text=message)
-                logging.debug(f"Tweet Response for account {account_id}: {response}")
-                print(f"投稿完了: {message} for account {account_id} at {datetime.now()}")
-                print(f"Tweet ID for account {account_id}: {response.data['id']}")
+                logging.debug(f"ツイートのレスポンス: アカウント {account_id}: {response}")
+                print(f"投稿完了: {message} アカウント {account_id} at {datetime.now()}")
+                print(f"ツイートID: アカウント {account_id}: {response.data['id']}")
                 last_post_time[account_id] = current_time
                 post_disable_until[account_id] = current_time + timedelta(minutes=MINIMUM_POST_INTERVAL_MINUTES)  # 10分間投稿停止
             else:
-                logging.error(f"No Twitter client available for account {account_id}")
+                logging.error(f"Twitterクライアントが利用できません: アカウント {account_id}")
         else:
-            logging.debug(f"No message to post for account {account_id}")
+            logging.debug(f"投稿するメッセージがありません: アカウント {account_id}")
     except tweepy.TweepyException as e:
-        logging.error(f"Error posting message for account {account_id}: {e}")
+        logging.error(f"メッセージの投稿でエラーが発生しました: アカウント {account_id}: {e}")
         print(f"エラーが発生しました: {e}")
         if "duplicate" in str(e):
-            print(f"重複投稿エラーが発生しました。次のメッセージを試します。 for account {account_id}")
+            print(f"重複投稿エラーが発生しました。次のメッセージを試します。 アカウント {account_id}")
             next_message = get_message_from_db(account_id)
             if next_message:
                 post_message(account_id, message=next_message)
     except Exception as e:
-        logging.error(f"Unexpected error in post_message for account {account_id}: {e}")
+        logging.error(f"メッセージの投稿で予期しないエラーが発生しました: アカウント {account_id}: {e}")
     finally:
         post_lock.release()
 
@@ -273,7 +273,7 @@ def get_message_from_db(account_id):
     try:
         conn = get_db_connection()
         cursor = conn.cursor()
-        logging.debug(f"Fetching message for account ID: {account_id}")
+        logging.debug(f"メッセージを取得しています: アカウントID {account_id}")
         cursor.execute("SELECT id, message FROM tweets WHERE is_deleted = 0 AND account_id = ? ORDER BY RANDOM() LIMIT 1", (account_id,))
         result = cursor.fetchone()
         if result:
@@ -282,14 +282,14 @@ def get_message_from_db(account_id):
         conn.close()
         return result['message'] if result else None
     except Exception as e:
-        logging.error(f"Error fetching message from DB for account {account_id}: {e}")
+        logging.error(f"データベースからメッセージを取得中にエラーが発生しました: アカウント {account_id}: {e}")
         return None
 
 # 自動投稿スケジュールの更新
 def update_auto_post_schedule(account_id):
     global auto_post_threads
 
-    logging.debug(f"Updating auto post schedule for account {account_id}")
+    logging.debug(f"自動投稿スケジュールを更新しています: アカウント {account_id}")
 
     # 現在のスレッドが存在し、動作中であれば停止
     if account_id in auto_post_threads:
@@ -297,14 +297,14 @@ def update_auto_post_schedule(account_id):
         stop_event.set()  # スレッドを停止させる
         thread = auto_post_threads[account_id]['thread']
         thread.join()     # スレッドが終了するのを待つ
-        logging.debug(f"Stopped existing thread for account {account_id}")
+        logging.debug(f"既存のスレッドを停止しました: アカウント {account_id}")
 
     # 新しいスレッドを開始
     stop_event = threading.Event()
     thread = threading.Thread(target=job, args=(account_id, stop_event))
     thread.start()
     auto_post_threads[account_id] = {'thread': thread, 'event': stop_event}
-    logging.debug(f"Started new thread for account {account_id}")
+    logging.debug(f"新しいスレッドを開始しました: アカウント {account_id}")
 
 # Flaskルート（省略せずに完全に記載します）
 
@@ -417,7 +417,7 @@ def register_account():
         conn.close()
         flash("新しいアカウントが登録されました")
     except Exception as e:
-        logging.error(f"Error registering account: {e}")
+        logging.error(f"アカウント登録中にエラーが発生しました: {e}")
         flash("アカウント登録中にエラーが発生しました")
     return redirect(url_for('index'))
 
@@ -431,7 +431,7 @@ def edit_account():
         access_token = request.form['access_token']
         access_token_secret = request.form['access_token_secret']
 
-        logging.debug(f"Edit Account - Name: {name}, Consumer API Key: {consumer_api_key}, Consumer API Secret: {consumer_api_secret}, Bearer Token: {bearer_token}, Access Token: {access_token}, Access Token Secret: {access_token_secret}")
+        logging.debug(f"アカウント編集 - 名前: {name}, Consumer API Key: {consumer_api_key}, Consumer API Secret: {consumer_api_secret}, Bearer Token: {bearer_token}, Access Token: {access_token}, Access Token Secret: {access_token_secret}")
 
         conn = get_db_connection()
         cursor = conn.cursor()
@@ -442,7 +442,7 @@ def edit_account():
         WHERE id = ?
         """, (name, consumer_api_key, consumer_api_secret, bearer_token, access_token, access_token_secret, current_account_id))
 
-        logging.debug(f"SQL Update Query executed for Account ID: {current_account_id}")
+        logging.debug(f"SQL更新クエリを実行しました: アカウントID {current_account_id}")
 
         conn.commit()
         conn.close()
@@ -451,7 +451,7 @@ def edit_account():
         # 最新のアカウント情報を再読み込み
         load_account(current_account_id)
     except Exception as e:
-        logging.error(f"Error updating account: {e}")
+        logging.error(f"アカウント情報の更新中にエラーが発生しました: {e}")
         flash("アカウント情報の更新中にエラーが発生しました")
     return redirect(url_for('index'))
 
@@ -473,7 +473,7 @@ def post():
         conn.close()
         flash("メッセージが追加されました")
     except Exception as e:
-        logging.error(f"Error posting message: {e}")
+        logging.error(f"メッセージ追加中にエラーが発生しました: {e}")
         flash("メッセージ追加中にエラーが発生しました")
     return redirect(url_for('index'))
 
@@ -508,7 +508,7 @@ def set_interval():
         # 自動投稿スケジュールを更新
         update_auto_post_schedule(current_account_id)
     except Exception as e:
-        logging.error(f"Error setting interval: {e}")
+        logging.error(f"投稿間隔の設定中にエラーが発生しました: {e}")
         flash("投稿間隔の設定中にエラーが発生しました")
     return redirect(url_for('index'))
 
@@ -528,7 +528,7 @@ def start_auto_post():
 
         flash("自動投稿実行中")
     except Exception as e:
-        logging.error(f"Error starting auto post: {e}")
+        logging.error(f"自動投稿の開始中にエラーが発生しました: {e}")
         flash("自動投稿の開始中にエラーが発生しました")
     return redirect(url_for('index'))
 
@@ -543,7 +543,7 @@ def stop_auto_post():
             stop_event.set()
             thread = auto_post_threads[current_account_id]['thread']
             thread.join()
-            logging.debug(f"Stopped thread for account {current_account_id}")
+            logging.debug(f"スレッドを停止しました: アカウント {current_account_id}")
             del auto_post_threads[current_account_id]
 
         # auto_post_statusテーブルにデータを保存
@@ -554,7 +554,7 @@ def stop_auto_post():
 
         flash("自動投稿を停止しました")
     except Exception as e:
-        logging.error(f"Error stopping auto post: {e}")
+        logging.error(f"自動投稿の停止中にエラーが発生しました: {e}")
         flash("自動投稿の停止中にエラーが発生しました")
     return redirect(url_for('index'))
 
@@ -568,7 +568,7 @@ def get_messages():
         conn.close()
         return jsonify([dict(msg) for msg in messages])
     except Exception as e:
-        logging.error(f"Error fetching messages: {e}")
+        logging.error(f"メッセージの取得中にエラーが発生しました: {e}")
         return jsonify([])
 
 @app.route('/delete/<int:id>', methods=['POST'])
@@ -581,7 +581,7 @@ def delete_message(id):
         conn.close()
         flash("メッセージが削除されました")
     except Exception as e:
-        logging.error(f"Error deleting message: {e}")
+        logging.error(f"メッセージの削除中にエラーが発生しました: {e}")
         flash("メッセージの削除中にエラーが発生しました")
     return redirect(url_for('index'))
 
@@ -589,7 +589,7 @@ def delete_message(id):
 def edit_message(id):
     try:
         new_message = request.form['new_message']
-        logging.debug(f"Editing message ID: {id}, New Message: {new_message}")
+        logging.debug(f"メッセージ編集 - ID: {id}, 新しいメッセージ: {new_message}")
         conn = get_db_connection()
         cursor = conn.cursor()
         cursor.execute("UPDATE tweets SET message = ? WHERE id = ? AND account_id = ?", (new_message, id, current_account_id))
@@ -597,7 +597,7 @@ def edit_message(id):
         conn.close()
         flash("メッセージが編集されました")
     except Exception as e:
-        logging.error(f"Error editing message: {e}")
+        logging.error(f"メッセージの編集中にエラーが発生しました: {e}")
         flash("メッセージの編集中にエラーが発生しました")
     return redirect(url_for('index'))
 
@@ -640,7 +640,7 @@ def upload():
         else:
             flash('無効なファイル形式です。CSVファイルをアップロードしてください')
     except Exception as e:
-        logging.error(f"Error uploading CSV file: {e}")
+        logging.error(f"CSVファイルのアップロード中にエラーが発生しました: {e}")
         flash("CSVファイルのアップロード中にエラーが発生しました")
     return redirect(url_for('index'))
 
@@ -654,7 +654,7 @@ def delete_all_messages():
         conn.close()
         flash("すべてのメッセージが削除されました")
     except Exception as e:
-        logging.error(f"Error deleting all messages: {e}")
+        logging.error(f"すべてのメッセージの削除中にエラーが発生しました: {e}")
         flash("すべてのメッセージの削除中にエラーが発生しました")
     return redirect(url_for('index'))
 
