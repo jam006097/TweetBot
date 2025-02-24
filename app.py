@@ -2,13 +2,17 @@ from flask import Flask, render_template, request, redirect, url_for, flash, jso
 import os
 import tweepy
 import time
-import sqlite3
 import csv
 import threading
 import logging
 from datetime import datetime, timedelta
 from werkzeug.utils import secure_filename
 from dotenv import load_dotenv
+from db_manager import (
+    get_db_connection, init_db, get_all_account_ids, get_account, get_settings, get_auto_post_status, get_message,
+    reset_messages, insert_account, update_account, insert_message, set_interval, update_auto_post_status,
+    get_messages, delete_message, update_message, insert_messages_from_csv, delete_all_messages
+)
 
 # 環境変数の読み込み
 load_dotenv()
@@ -39,62 +43,6 @@ is_auto_posting = {}    # アカウントごとの自動投稿状態
 auto_post_threads = {}  # アカウントごとのスレッド（スレッドと停止用のイベントを格納）
 last_post_time = {}     # アカウントごとの最後の投稿時間
 
-# SQLite3へのコネクション作成
-def get_db_connection():
-    conn = sqlite3.connect('tweets.db')
-    conn.row_factory = sqlite3.Row
-    return conn
-
-# データベースの初期化
-def init_db():
-    conn = get_db_connection()
-    cursor = conn.cursor()
-
-    # テーブル作成
-    cursor.execute('''
-    CREATE TABLE IF NOT EXISTS settings (
-        id INTEGER PRIMARY KEY,
-        interval_type TEXT,
-        interval INTEGER,
-        specific_time TEXT,
-        account_id INTEGER,
-        FOREIGN KEY(account_id) REFERENCES accounts(id)
-    )
-    ''')
-
-    cursor.execute('''
-    CREATE TABLE IF NOT EXISTS tweets (
-        id INTEGER PRIMARY KEY,
-        message TEXT,
-        is_deleted INTEGER DEFAULT 0,
-        account_id INTEGER,
-        FOREIGN KEY(account_id) REFERENCES accounts(id)
-    )
-    ''')
-
-    cursor.execute('''
-    CREATE TABLE IF NOT EXISTS accounts (
-        id INTEGER PRIMARY KEY,
-        name TEXT NOT NULL,
-        consumer_api_key TEXT NOT NULL,
-        consumer_api_secret TEXT NOT NULL,
-        bearer_token TEXT NOT NULL,
-        access_token TEXT NOT NULL,
-        access_token_secret TEXT NOT NULL
-    )
-    ''')
-
-    cursor.execute('''
-    CREATE TABLE IF NOT EXISTS auto_post_status (
-        account_id INTEGER PRIMARY KEY,
-        status BOOLEAN NOT NULL,
-        FOREIGN KEY (account_id) REFERENCES accounts (id)
-    )
-    ''')
-
-    conn.commit()
-    conn.close()
-
 init_db()
 
 # データベースから全アカウントIDを取得する関数
@@ -108,11 +56,7 @@ def get_all_account_ids():
 
 # アカウント情報の読み込み
 def load_account(account_id):
-    conn = get_db_connection()
-    cursor = conn.cursor()
-
-    cursor.execute("SELECT * FROM accounts WHERE id = ?", (account_id,))
-    account = cursor.fetchone()
+    account = get_account(account_id)
     logging.debug(f"アカウントを読み込みました: {account}")
 
     if account:
@@ -131,15 +75,9 @@ def load_account(account_id):
     else:
         logging.error(f"アカウントが見つかりません: アカウントID {account_id}")
 
-    conn.close()
-
 # 設定の読み込み
 def load_settings(account_id):
-    conn = get_db_connection()
-    cursor = conn.cursor()
-
-    cursor.execute("SELECT interval_type, interval, specific_time FROM settings WHERE account_id = ?", (account_id,))
-    settings = cursor.fetchall()
+    settings = get_settings(account_id)
     if settings:
         interval_type = settings[0]['interval_type']
         if interval_type == 'interval':
@@ -159,15 +97,9 @@ def load_settings(account_id):
         'specific_times': specific_times
     }
 
-    conn.close()
-
 # 自動投稿状態の取得
 def load_auto_post_status(account_id):
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    cursor.execute('SELECT status FROM auto_post_status WHERE account_id = ?', (account_id,))
-    status_row = cursor.fetchone()
-    conn.close()
+    status_row = get_auto_post_status(account_id)
     is_auto_posting[account_id] = bool(status_row['status']) if status_row else False
 
 # 次の投稿時間の計算
@@ -239,7 +171,7 @@ def post_message(account_id, message=None):
                 return
 
         if not message:
-            message = get_message_from_db(account_id)
+            message = get_message(account_id)
 
         if message:
             logging.debug(f"投稿するメッセージ: アカウント {account_id}: {message}")
@@ -260,30 +192,13 @@ def post_message(account_id, message=None):
         print(f"エラーが発生しました: {e}")
         if "duplicate" in str(e):
             print(f"重複投稿エラーが発生しました。次のメッセージを試します。 アカウント {account_id}")
-            next_message = get_message_from_db(account_id)
+            next_message = get_message(account_id)
             if next_message:
                 post_message(account_id, message=next_message)
     except Exception as e:
         logging.error(f"メッセージの投稿で予期しないエラーが発生しました: アカウント {account_id}: {e}")
     finally:
         post_lock.release()
-
-# データベースからメッセージを取得
-def get_message_from_db(account_id):
-    try:
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        logging.debug(f"メッセージを取得しています: アカウントID {account_id}")
-        cursor.execute("SELECT id, message FROM tweets WHERE is_deleted = 0 AND account_id = ? ORDER BY RANDOM() LIMIT 1", (account_id,))
-        result = cursor.fetchone()
-        if result:
-            cursor.execute("UPDATE tweets SET is_deleted = 1 WHERE id = ?", (result['id'],))
-            conn.commit()
-        conn.close()
-        return result['message'] if result else None
-    except Exception as e:
-        logging.error(f"データベースからメッセージを取得中にエラーが発生しました: アカウント {account_id}: {e}")
-        return None
 
 # 自動投稿スケジュールの更新
 def update_auto_post_schedule(account_id):
@@ -352,8 +267,7 @@ def index():
     cursor.execute("SELECT COUNT(*) FROM tweets WHERE is_deleted = 0 AND account_id = ?", (current_account_id,))
     count_not_deleted = cursor.fetchone()[0]
     if count_not_deleted == 0:
-        cursor.execute("UPDATE tweets SET is_deleted = 0 WHERE account_id = ?", (current_account_id,))
-        conn.commit()
+        reset_messages(current_account_id)
         flash("メッセージリストがリセットされました")
         reset_flag = True  # リセットフラグを立てる
 
@@ -398,23 +312,7 @@ def register_account():
         access_token = request.form['access_token']
         access_token_secret = request.form['access_token_secret']
 
-        conn = get_db_connection()
-        cursor = conn.cursor()
-
-        cursor.execute('''
-        INSERT INTO accounts (name, consumer_api_key, consumer_api_secret, bearer_token, access_token, access_token_secret)
-        VALUES (?, ?, ?, ?, ?, ?)
-        ''', (
-            name,
-            consumer_api_key,
-            consumer_api_secret,
-            bearer_token,
-            access_token,
-            access_token_secret
-        ))
-
-        conn.commit()
-        conn.close()
+        insert_account(name, consumer_api_key, consumer_api_secret, bearer_token, access_token, access_token_secret)
         flash("新しいアカウントが登録されました")
     except Exception as e:
         logging.error(f"アカウント登録中にエラーが発生しました: {e}")
@@ -433,19 +331,9 @@ def edit_account():
 
         logging.debug(f"アカウント編集 - 名前: {name}, Consumer API Key: {consumer_api_key}, Consumer API Secret: {consumer_api_secret}, Bearer Token: {bearer_token}, Access Token: {access_token}, Access Token Secret: {access_token_secret}")
 
-        conn = get_db_connection()
-        cursor = conn.cursor()
-
-        cursor.execute("""
-        UPDATE accounts
-        SET name = ?, consumer_api_key = ?, consumer_api_secret = ?, bearer_token = ?, access_token = ?, access_token_secret = ?
-        WHERE id = ?
-        """, (name, consumer_api_key, consumer_api_secret, bearer_token, access_token, access_token_secret, current_account_id))
-
+        update_account(name, consumer_api_key, consumer_api_secret, bearer_token, access_token, access_token_secret, current_account_id)
         logging.debug(f"SQL更新クエリを実行しました: アカウントID {current_account_id}")
 
-        conn.commit()
-        conn.close()
         flash("アカウント情報が更新されました")
 
         # 最新のアカウント情報を再読み込み
@@ -466,11 +354,7 @@ def reset_status():
 def post():
     try:
         message = request.form['message']
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        cursor.execute("INSERT INTO tweets (message, account_id) VALUES (?, ?)", (message, current_account_id))
-        conn.commit()
-        conn.close()
+        insert_message(message, current_account_id)
         flash("メッセージが追加されました")
     except Exception as e:
         logging.error(f"メッセージ追加中にエラーが発生しました: {e}")
@@ -478,29 +362,20 @@ def post():
     return redirect(url_for('index'))
 
 @app.route('/set_interval', methods=['POST'])
-def set_interval():
+def set_interval_route():
     try:
         interval_type = request.form['interval_type']
-
-        conn = get_db_connection()
-        cursor = conn.cursor()
 
         if interval_type == 'interval':
             interval = int(request.form['interval'])
             specific_times = []
-            cursor.execute("DELETE FROM settings WHERE account_id = ?", (current_account_id,))
-            cursor.execute("INSERT INTO settings (interval_type, interval, account_id) VALUES (?, ?, ?)", (interval_type, interval, current_account_id))
             flash(f"投稿間隔が{interval}時間に設定されました")
         else:
             specific_times = [time for time in request.form.getlist('specific_times') if time]
             interval = None
-            cursor.execute("DELETE FROM settings WHERE account_id = ?", (current_account_id,))
-            for time_value in specific_times:
-                cursor.execute("INSERT INTO settings (interval_type, specific_time, account_id) VALUES (?, ?, ?)", (interval_type, time_value, current_account_id))
             flash(f"投稿時間が{', '.join(specific_times)}に設定されました")
 
-        conn.commit()
-        conn.close()
+        set_interval(interval_type, interval, specific_times, current_account_id)
 
         # アカウント設定を更新
         load_settings(current_account_id)
@@ -521,10 +396,7 @@ def start_auto_post():
         update_auto_post_schedule(current_account_id)
 
         # auto_post_statusテーブルにデータを保存
-        conn = get_db_connection()
-        conn.execute('INSERT OR REPLACE INTO auto_post_status (account_id, status) VALUES (?, ?)', (current_account_id, True))
-        conn.commit()
-        conn.close()
+        update_auto_post_status(current_account_id, True)
 
         flash("自動投稿実行中")
     except Exception as e:
@@ -547,10 +419,7 @@ def stop_auto_post():
             del auto_post_threads[current_account_id]
 
         # auto_post_statusテーブルにデータを保存
-        conn = get_db_connection()
-        conn.execute('INSERT OR REPLACE INTO auto_post_status (account_id, status) VALUES (?, ?)', (current_account_id, False))
-        conn.commit()
-        conn.close()
+        update_auto_post_status(current_account_id, False)
 
         flash("自動投稿を停止しました")
     except Exception as e:
@@ -559,26 +428,18 @@ def stop_auto_post():
     return redirect(url_for('index'))
 
 @app.route('/messages')
-def get_messages():
+def get_messages_route():
     try:
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        cursor.execute("SELECT id, message, is_deleted FROM tweets WHERE account_id = ?", (current_account_id,))
-        messages = cursor.fetchall()
-        conn.close()
+        messages = get_messages(current_account_id)
         return jsonify([dict(msg) for msg in messages])
     except Exception as e:
         logging.error(f"メッセージの取得中にエラーが発生しました: {e}")
         return jsonify([])
 
 @app.route('/delete/<int:id>', methods=['POST'])
-def delete_message(id):
+def delete_message_route(id):
     try:
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        cursor.execute("DELETE FROM tweets WHERE id = ? AND account_id = ?", (id, current_account_id))
-        conn.commit()
-        conn.close()
+        delete_message(id, current_account_id)
         flash("メッセージが削除されました")
     except Exception as e:
         logging.error(f"メッセージの削除中にエラーが発生しました: {e}")
@@ -586,15 +447,11 @@ def delete_message(id):
     return redirect(url_for('index'))
 
 @app.route('/edit/<int:id>', methods=['POST'])
-def edit_message(id):
+def edit_message_route(id):
     try:
         new_message = request.form['new_message']
         logging.debug(f"メッセージ編集 - ID: {id}, 新しいメッセージ: {new_message}")
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        cursor.execute("UPDATE tweets SET message = ? WHERE id = ? AND account_id = ?", (new_message, id, current_account_id))
-        conn.commit()
-        conn.close()
+        update_message(new_message, id, current_account_id)
         flash("メッセージが編集されました")
     except Exception as e:
         logging.error(f"メッセージの編集中にエラーが発生しました: {e}")
@@ -617,21 +474,7 @@ def upload():
         if file and file.filename.endswith('.csv'):
             filename = secure_filename(file.filename)
             file.save(filename)
-            failed_messages = []
-            with open(filename, newline='', encoding='utf-8') as csvfile:
-                reader = csv.reader(csvfile)
-                conn = get_db_connection()
-                cursor = conn.cursor()
-                for row in reader:
-                    if row:  # 空の行を無視
-                        cursor.execute("SELECT COUNT(*) FROM tweets WHERE message = ? AND account_id = ?", (row[0], current_account_id))
-                        count = cursor.fetchone()[0]
-                        if count == 0:
-                            cursor.execute("INSERT INTO tweets (message, account_id) VALUES (?, ?)", (row[0], current_account_id))
-                        else:
-                            failed_messages.append(row[0])
-                conn.commit()
-                conn.close()
+            failed_messages = insert_messages_from_csv(filename, current_account_id)
             flash('CSVファイルのメッセージが追加されました')
             if failed_messages:
                 # Limit the size of the flash message
@@ -645,13 +488,9 @@ def upload():
     return redirect(url_for('index'))
 
 @app.route('/delete_all_messages', methods=['POST'])
-def delete_all_messages():
+def delete_all_messages_route():
     try:
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        cursor.execute("DELETE FROM tweets WHERE account_id = ?", (current_account_id,))
-        conn.commit()
-        conn.close()
+        delete_all_messages(current_account_id)
         flash("すべてのメッセージが削除されました")
     except Exception as e:
         logging.error(f"すべてのメッセージの削除中にエラーが発生しました: {e}")
