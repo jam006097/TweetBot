@@ -8,11 +8,12 @@ from datetime import datetime, timedelta
 from werkzeug.utils import secure_filename
 from dotenv import load_dotenv
 from db_manager import (
-    get_db_connection, init_db, get_all_account_ids, get_account, get_settings, get_auto_post_status, get_message,
-    reset_messages, insert_account, update_account, insert_message, set_interval, update_auto_post_status,
+    get_db_connection, init_db, get_all_account_ids, get_settings, get_auto_post_status, get_message,
+    reset_messages, insert_message, set_interval, update_auto_post_status,
     get_messages, delete_message, update_message, delete_all_messages
 )
 from csv_manager import insert_messages_from_csv
+from account_manager import load_account, register_account, edit_account, clients
 
 # 環境変数の読み込み
 load_dotenv()
@@ -37,7 +38,6 @@ post_lock = threading.Lock()  # 追加: 投稿用のロック
 post_disable_until = {}  # 追加: アカウントごとの投稿停止時間
 
 # アカウントごとのデータを管理する辞書
-clients = {}            # アカウントごとのTwitterクライアント
 account_settings = {}   # アカウントごとの設定
 is_auto_posting = {}    # アカウントごとの自動投稿状態
 auto_post_threads = {}  # アカウントごとのスレッド（スレッドと停止用のイベントを格納）
@@ -53,27 +53,6 @@ def get_all_account_ids():
     account_ids = [row['id'] for row in cursor.fetchall()]
     conn.close()
     return account_ids
-
-# アカウント情報の読み込み
-def load_account(account_id):
-    account = get_account(account_id)
-    logging.debug(f"アカウントを読み込みました: {account}")
-
-    if account:
-        try:
-            client = tweepy.Client(
-                bearer_token=account['bearer_token'],
-                consumer_key=account['consumer_api_key'],
-                consumer_secret=account['consumer_api_secret'],
-                access_token=account['access_token'],
-                access_token_secret=account['access_token_secret']
-            )
-            clients[account_id] = client
-            logging.debug(f"Twitterクライアントの初期化に成功しました: アカウント {account_id}")
-        except Exception as e:
-            logging.error(f"Twitterクライアントの初期化中にエラーが発生しました: アカウント {account_id}: {e}")
-    else:
-        logging.error(f"アカウントが見つかりません: アカウントID {account_id}")
 
 # 設定の読み込み
 def load_settings(account_id):
@@ -304,7 +283,7 @@ def select_account():
     return redirect(url_for('index'))
 
 @app.route('/register_account', methods=['POST'])
-def register_account():
+def register_account_route():
     try:
         name = request.form['name']
         consumer_api_key = request.form['consumer_api_key']
@@ -313,7 +292,7 @@ def register_account():
         access_token = request.form['access_token']
         access_token_secret = request.form['access_token_secret']
 
-        insert_account(name, consumer_api_key, consumer_api_secret, bearer_token, access_token, access_token_secret)
+        register_account(name, consumer_api_key, consumer_api_secret, bearer_token, access_token, access_token_secret)
         flash("新しいアカウントが登録されました")
     except Exception as e:
         logging.error(f"アカウント登録中にエラーが発生しました: {e}")
@@ -321,7 +300,7 @@ def register_account():
     return redirect(url_for('index'))
 
 @app.route('/edit_account', methods=['POST'])
-def edit_account():
+def edit_account_route():
     try:
         name = request.form['name']
         consumer_api_key = request.form['consumer_api_key']
@@ -332,7 +311,7 @@ def edit_account():
 
         logging.debug(f"アカウント編集 - 名前: {name}, Consumer API Key: {consumer_api_key}, Consumer API Secret: {consumer_api_secret}, Bearer Token: {bearer_token}, Access Token: {access_token}, Access Token Secret: {access_token_secret}")
 
-        update_account(name, consumer_api_key, consumer_api_secret, bearer_token, access_token, access_token_secret, current_account_id)
+        edit_account(name, consumer_api_key, consumer_api_secret, bearer_token, access_token, access_token_secret, current_account_id)
         logging.debug(f"SQL更新クエリを実行しました: アカウントID {current_account_id}")
 
         flash("アカウント情報が更新されました")
