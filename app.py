@@ -2,7 +2,6 @@ from flask import Flask, render_template, request, redirect, url_for, flash, jso
 import os
 import tweepy
 import time
-import csv
 import threading
 import logging
 from datetime import datetime, timedelta
@@ -11,8 +10,9 @@ from dotenv import load_dotenv
 from db_manager import (
     get_db_connection, init_db, get_all_account_ids, get_account, get_settings, get_auto_post_status, get_message,
     reset_messages, insert_account, update_account, insert_message, set_interval, update_auto_post_status,
-    get_messages, delete_message, update_message, insert_messages_from_csv, delete_all_messages
+    get_messages, delete_message, update_message, delete_all_messages
 )
+from csv_manager import insert_messages_from_csv
 
 # 環境変数の読み込み
 load_dotenv()
@@ -198,7 +198,8 @@ def post_message(account_id, message=None):
     except Exception as e:
         logging.error(f"メッセージの投稿で予期しないエラーが発生しました: アカウント {account_id}: {e}")
     finally:
-        post_lock.release()
+        if post_lock.locked():
+            post_lock.release()
 
 # 自動投稿スケジュールの更新
 def update_auto_post_schedule(account_id):
