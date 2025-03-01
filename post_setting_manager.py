@@ -104,3 +104,13 @@ def check_and_start_auto_post(account_settings, is_auto_posting):
         load_auto_post_status(account_id, is_auto_posting)
         if is_auto_posting.get(account_id, False):
             update_auto_post_schedule(account_id, account_settings)
+
+def load_account_settings_and_status(account_id, account_settings, is_auto_posting):
+    load_settings(account_id, account_settings)
+    load_auto_post_status(account_id, is_auto_posting)
+    is_posting = is_auto_posting.get(account_id, False)
+    settings = account_settings.get(account_id, {})
+    interval = settings.get('interval')
+    specific_times = settings.get('specific_times')
+    interval_type = settings.get('interval_type')
+    return is_posting, interval, specific_times, interval_type

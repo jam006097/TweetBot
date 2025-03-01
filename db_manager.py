@@ -134,3 +134,11 @@ def delete_all_messages(account_id):
     cursor.execute("DELETE FROM tweets WHERE account_id = ?", (account_id,))
     conn.commit()
     conn.close()
+
+def get_tweets(account_id):
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT id, message, is_deleted FROM tweets WHERE account_id = ?", (account_id,))
+    messages = cursor.fetchall()
+    conn.close()
+    return messages

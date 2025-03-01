@@ -5,7 +5,8 @@ from dotenv import load_dotenv
 from db_manager import (
     get_db_connection, get_all_account_ids, get_settings, get_auto_post_status, get_message,
     reset_messages, insert_message, set_interval, update_auto_post_status,
-    get_messages, delete_message, update_message, delete_all_messages
+    get_messages, delete_message, update_message, delete_all_messages,
+    get_tweets  # 追加
 )
 from csv_manager import insert_messages_from_csv, upload_csv
 from account_manager import (
@@ -14,7 +15,7 @@ from account_manager import (
 )
 from post_setting_manager import (
     load_settings, load_auto_post_status, set_interval_route, start_auto_post, stop_auto_post,
-    check_and_start_auto_post
+    check_and_start_auto_post, load_account_settings_and_status  # 追加
 )
 from post_manager import update_auto_post_schedule, auto_post_threads  # 追加
 
@@ -46,25 +47,13 @@ def index():
     accounts = get_accounts()
 
     if current_account_id:
-        load_settings(current_account_id, account_settings)
-        load_auto_post_status(current_account_id, is_auto_posting)
-        is_posting = is_auto_posting.get(current_account_id, False)
-        settings = account_settings.get(current_account_id, {})
-        interval = settings.get('interval')
-        specific_times = settings.get('specific_times')
-        interval_type = settings.get('interval_type')
+        is_posting, interval, specific_times, interval_type = load_account_settings_and_status(current_account_id, account_settings, is_auto_posting)
     else:
         # 最初のアカウントをデフォルトとして選択
         if accounts:
             current_account_id = accounts[0]['id']
             load_account(current_account_id)
-            load_settings(current_account_id, account_settings)
-            load_auto_post_status(current_account_id, is_auto_posting)
-            is_posting = is_auto_posting.get(current_account_id, False)
-            settings = account_settings.get(current_account_id, {})
-            interval = settings.get('interval')
-            specific_times = settings.get('specific_times')
-            interval_type = settings.get('interval_type')
+            is_posting, interval, specific_times, interval_type = load_account_settings_and_status(current_account_id, account_settings, is_auto_posting)
         else:
             is_posting = False
             interval = None
@@ -79,11 +68,7 @@ def index():
         flash("メッセージリストがリセットされました")
         reset_flag = True  # リセットフラグを立てる
 
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    cursor.execute("SELECT id, message, is_deleted FROM tweets WHERE account_id = ?", (current_account_id,))
-    messages = cursor.fetchall()
-    conn.close()
+    messages = get_tweets(current_account_id)
 
     current_setting = f"時間間隔: {interval}時間" if interval_type == 'interval' else f"時間指定: {', '.join(specific_times)}"
 
