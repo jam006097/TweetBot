@@ -6,13 +6,6 @@ def get_db_connection():
     conn.row_factory = sqlite3.Row
     return conn
 
-def init_db():
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    # ...existing code...
-    conn.commit()
-    conn.close()
-
 def get_all_account_ids():
     conn = get_db_connection()
     cursor = conn.cursor()

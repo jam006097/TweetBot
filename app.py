@@ -8,7 +8,7 @@ from datetime import datetime, timedelta
 from werkzeug.utils import secure_filename
 from dotenv import load_dotenv
 from db_manager import (
-    get_db_connection, init_db, get_all_account_ids, get_settings, get_auto_post_status, get_message,
+    get_db_connection, get_all_account_ids, get_settings, get_auto_post_status, get_message,
     reset_messages, insert_message, set_interval, update_auto_post_status,
     get_messages, delete_message, update_message, delete_all_messages
 )
@@ -43,7 +43,6 @@ is_auto_posting = {}    # アカウントごとの自動投稿状態
 auto_post_threads = {}  # アカウントごとのスレッド（スレッドと停止用のイベントを格納）
 last_post_time = {}     # アカウントごとの最後の投稿時間
 
-init_db()
 # 設定の読み込み
 def load_settings(account_id):
     settings = get_settings(account_id)
@@ -147,9 +146,9 @@ def post_message(account_id, message=None):
             client = clients.get(account_id)
             if client:
                 response = client.create_tweet(text=message)
-                logging.debug(f"ツイートのレスポンス: アカウント {account_id}: {response}")
+                # logging.debug(f"ツイートのレスポンス: アカウント {account_id}: {response}")
                 print(f"投稿完了: {message} \nアカウント {account_id} at {datetime.now()}")
-                print(f"ツイートID: アカウント {account_id}: {response.data['id']}")
+                # print(f"ツイートID: アカウント {account_id}: {response.data['id']}")
                 last_post_time[account_id] = current_time
                 post_disable_until[account_id] = current_time + timedelta(minutes=MINIMUM_POST_INTERVAL_MINUTES)  # 10分間投稿停止
             else:
