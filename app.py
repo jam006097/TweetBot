@@ -8,9 +8,15 @@ from db_manager import (
     get_messages, delete_message, update_message, delete_all_messages
 )
 from csv_manager import insert_messages_from_csv, upload_csv
-from account_manager import load_account, register_account, edit_account, clients, get_all_account_ids
-from post_setting_manager import load_settings, load_auto_post_status, set_interval_route, start_auto_post, stop_auto_post
-from post_manager import update_auto_post_schedule, post_message, auto_post_threads
+from account_manager import (
+    load_account, register_account, edit_account, clients, get_all_account_ids,
+    get_accounts, get_current_account, reset_account_messages
+)
+from post_setting_manager import (
+    load_settings, load_auto_post_status, set_interval_route, start_auto_post, stop_auto_post,
+    check_and_start_auto_post
+)
+from post_manager import update_auto_post_schedule, auto_post_threads  # 追加
 
 # 環境変数の読み込み
 load_dotenv()
@@ -35,12 +41,9 @@ is_auto_posting = {}    # アカウントごとの自動投稿状態
 @app.route('/')
 def index():
     global current_account_id, reset_flag
-    conn = get_db_connection()
-    cursor = conn.cursor()
 
     # アカウント一覧を取得
-    cursor.execute("SELECT id, name FROM accounts")
-    accounts = cursor.fetchall()
+    accounts = get_accounts()
 
     if current_account_id:
         load_settings(current_account_id, account_settings)
@@ -69,17 +72,15 @@ def index():
             interval_type = 'interval'
 
     # 現在のアカウント情報を取得
-    cursor.execute("SELECT * FROM accounts WHERE id = ?", (current_account_id,))
-    current_account = cursor.fetchone()
+    current_account = get_current_account(current_account_id)
 
     # 全ての is_deleted フラグが1になった場合、全てのフラグを0にリセット
-    cursor.execute("SELECT COUNT(*) FROM tweets WHERE is_deleted = 0 AND account_id = ?", (current_account_id,))
-    count_not_deleted = cursor.fetchone()[0]
-    if count_not_deleted == 0:
-        reset_messages(current_account_id)
+    if reset_account_messages(current_account_id):
         flash("メッセージリストがリセットされました")
         reset_flag = True  # リセットフラグを立てる
 
+    conn = get_db_connection()
+    cursor = conn.cursor()
     cursor.execute("SELECT id, message, is_deleted FROM tweets WHERE account_id = ?", (current_account_id,))
     messages = cursor.fetchall()
     conn.close()
@@ -176,7 +177,7 @@ def set_interval_route_handler():
 
 @app.route('/start_auto_post')
 def start_auto_post_handler():
-    return start_auto_post(current_account_id, is_auto_posting, update_auto_post_schedule)
+    return start_auto_post(current_account_id, is_auto_posting, update_auto_post_schedule, account_settings)
 
 @app.route('/stop_auto_post')
 def stop_auto_post_handler():
@@ -233,16 +234,7 @@ def delete_all_messages_route():
     return redirect(url_for('index'))
 
 # アプリケーション起動時に全てのアカウントの自動投稿状態をチェック
-def check_and_start_auto_post():
-    account_ids = get_all_account_ids()
-    for account_id in account_ids:
-        load_account(account_id)
-        load_settings(account_id, account_settings)
-        load_auto_post_status(account_id, is_auto_posting)
-        if is_auto_posting.get(account_id, False):
-            update_auto_post_schedule(account_id, account_settings)
-
-check_and_start_auto_post()
+check_and_start_auto_post(account_settings, is_auto_posting)
 
 if __name__ == '__main__':
     app.run(debug=True)

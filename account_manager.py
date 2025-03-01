@@ -1,6 +1,6 @@
 import logging
 import tweepy
-from db_manager import get_account, insert_account, update_account, get_db_connection
+from db_manager import get_account, insert_account, update_account, get_db_connection, reset_messages  # 追加
 
 clients = {}
 
@@ -38,3 +38,29 @@ def get_all_account_ids():
     account_ids = [row['id'] for row in cursor.fetchall()]
     conn.close()
     return account_ids
+
+def get_accounts():
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT id, name FROM accounts")
+    accounts = cursor.fetchall()
+    conn.close()
+    return accounts
+
+def get_current_account(account_id):
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM accounts WHERE id = ?", (account_id,))
+    current_account = cursor.fetchone()
+    conn.close()
+    return current_account
+
+def reset_account_messages(account_id):
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT COUNT(*) FROM tweets WHERE is_deleted = 0 AND account_id = ?", (account_id,))
+    count_not_deleted = cursor.fetchone()[0]
+    if count_not_deleted == 0:
+        reset_messages(account_id)
+        return True
+    return False

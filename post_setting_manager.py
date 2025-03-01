@@ -1,6 +1,8 @@
 from db_manager import get_settings, get_auto_post_status, set_interval, update_auto_post_status
 from flask import request, flash, redirect, url_for
 import logging
+from account_manager import load_account, get_all_account_ids
+from post_manager import update_auto_post_schedule
 
 DEFAULT_INTERVAL_HOURS = 3  # デフォルトの投稿間隔（時間単位）
 
@@ -93,3 +95,12 @@ def stop_auto_post(current_account_id, auto_post_threads, is_auto_posting):
         logging.error(f"自動投稿の停止中にエラーが発生しました: {e}")
         flash("自動投稿の停止中にエラーが発生しました")
     return redirect(url_for('index'))
+
+def check_and_start_auto_post(account_settings, is_auto_posting):
+    account_ids = get_all_account_ids()
+    for account_id in account_ids:
+        load_account(account_id)
+        load_settings(account_id, account_settings)
+        load_auto_post_status(account_id, is_auto_posting)
+        if is_auto_posting.get(account_id, False):
+            update_auto_post_schedule(account_id, account_settings)
