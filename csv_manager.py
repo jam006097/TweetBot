@@ -1,5 +1,9 @@
 import csv
 from db_manager import get_db_connection
+from flask import flash, redirect, url_for
+from werkzeug.utils import secure_filename
+import logging
+from db_manager import insert_messages_from_csv
 
 def insert_messages_from_csv(filename, account_id):
     failed_messages = []
@@ -18,3 +22,25 @@ def insert_messages_from_csv(filename, account_id):
         conn.commit()
         conn.close()
     return failed_messages
+
+def upload_csv(file, current_account_id):
+    try:
+        if file.filename == '':
+            flash('ファイルが選択されていません')
+            return redirect(url_for('index'))
+
+        if file and file.filename.endswith('.csv'):
+            filename = secure_filename(file.filename)
+            file.save(filename)
+            failed_messages = insert_messages_from_csv(filename, current_account_id)
+            flash('CSVファイルのメッセージが追加されました')
+            if failed_messages:
+                # Limit the size of the flash message
+                failed_message_preview = ', '.join(failed_messages[:5])
+                flash(f"重複のため保存できなかったメッセージ: {failed_message_preview} 他 {len(failed_messages) - 5} 件" if len(failed_messages) > 5 else f"重複のため保存できなかったメッセージ: {failed_message_preview}")
+        else:
+            flash('無効なファイル形式です。CSVファイルをアップロードしてください')
+    except Exception as e:
+        logging.error(f"CSVファイルのアップロード中にエラーが発生しました: {e}")
+        flash("CSVファイルのアップロード中にエラーが発生しました")
+    return redirect(url_for('index'))

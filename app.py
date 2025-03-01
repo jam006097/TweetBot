@@ -12,8 +12,9 @@ from db_manager import (
     reset_messages, insert_message, set_interval, update_auto_post_status,
     get_messages, delete_message, update_message, delete_all_messages
 )
-from csv_manager import insert_messages_from_csv
+from csv_manager import insert_messages_from_csv, upload_csv
 from account_manager import load_account, register_account, edit_account, clients, get_all_account_ids
+from post_setting_manager import load_settings, load_auto_post_status, set_interval_route, start_auto_post, stop_auto_post
 
 # 環境変数の読み込み
 load_dotenv()
@@ -42,33 +43,6 @@ account_settings = {}   # アカウントごとの設定
 is_auto_posting = {}    # アカウントごとの自動投稿状態
 auto_post_threads = {}  # アカウントごとのスレッド（スレッドと停止用のイベントを格納）
 last_post_time = {}     # アカウントごとの最後の投稿時間
-
-# 設定の読み込み
-def load_settings(account_id):
-    settings = get_settings(account_id)
-    if settings:
-        interval_type = settings[0]['interval_type']
-        if interval_type == 'interval':
-            interval = settings[0]['interval']
-            specific_times = []
-        else:
-            specific_times = [setting['specific_time'] for setting in settings if setting['specific_time']]
-            interval = None
-    else:
-        interval_type = 'interval'
-        interval = DEFAULT_INTERVAL_HOURS  # デフォルトの間隔時間を使用
-        specific_times = []
-
-    account_settings[account_id] = {
-        'interval_type': interval_type,
-        'interval': interval,
-        'specific_times': specific_times
-    }
-
-# 自動投稿状態の取得
-def load_auto_post_status(account_id):
-    status_row = get_auto_post_status(account_id)
-    is_auto_posting[account_id] = bool(status_row['status']) if status_row else False
 
 # 次の投稿時間の計算
 def get_seconds_until_next_post(specific_times):
@@ -190,7 +164,7 @@ def update_auto_post_schedule(account_id):
     auto_post_threads[account_id] = {'thread': thread, 'event': stop_event}
     logging.debug(f"新しいスレッドを開始しました: アカウント {account_id}")
 
-# Flaskルート（省略せずに完全に記載します）
+# Flaskルート（省略せずに記載します）
 
 @app.route('/')
 def index():
@@ -203,8 +177,8 @@ def index():
     accounts = cursor.fetchall()
 
     if current_account_id:
-        load_settings(current_account_id)
-        load_auto_post_status(current_account_id)
+        load_settings(current_account_id, account_settings)
+        load_auto_post_status(current_account_id, is_auto_posting)
         is_posting = is_auto_posting.get(current_account_id, False)
         settings = account_settings.get(current_account_id, {})
         interval = settings.get('interval')
@@ -215,8 +189,8 @@ def index():
         if accounts:
             current_account_id = accounts[0]['id']
             load_account(current_account_id)
-            load_settings(current_account_id)
-            load_auto_post_status(current_account_id)
+            load_settings(current_account_id, account_settings)
+            load_auto_post_status(current_account_id, is_auto_posting)
             is_posting = is_auto_posting.get(current_account_id, False)
             settings = account_settings.get(current_account_id, {})
             interval = settings.get('interval')
@@ -266,8 +240,8 @@ def select_account():
     current_account_id = account_id
 
     load_account(account_id)
-    load_settings(account_id)
-    load_auto_post_status(account_id)
+    load_settings(account_id, account_settings)
+    load_auto_post_status(account_id, is_auto_posting)
 
     return redirect(url_for('index'))
 
@@ -331,70 +305,16 @@ def post():
     return redirect(url_for('index'))
 
 @app.route('/set_interval', methods=['POST'])
-def set_interval_route():
-    try:
-        interval_type = request.form['interval_type']
-
-        if interval_type == 'interval':
-            interval = int(request.form['interval'])
-            specific_times = []
-            flash(f"投稿間隔が{interval}時間に設定されました")
-        else:
-            specific_times = [time for time in request.form.getlist('specific_times') if time]
-            interval = None
-            flash(f"投稿時間が{', '.join(specific_times)}に設定されました")
-
-        set_interval(interval_type, interval, specific_times, current_account_id)
-
-        # アカウント設定を更新
-        load_settings(current_account_id)
-
-        # 自動投稿スケジュールを更新
-        update_auto_post_schedule(current_account_id)
-    except Exception as e:
-        logging.error(f"投稿間隔の設定中にエラーが発生しました: {e}")
-        flash("投稿間隔の設定中にエラーが発生しました")
-    return redirect(url_for('index'))
+def set_interval_route_handler():
+    return set_interval_route(current_account_id, account_settings, is_auto_posting, update_auto_post_schedule)
 
 @app.route('/start_auto_post')
-def start_auto_post():
-    try:
-        is_auto_posting[current_account_id] = True
-
-        # 自動投稿スケジュールの更新
-        update_auto_post_schedule(current_account_id)
-
-        # auto_post_statusテーブルにデータを保存
-        update_auto_post_status(current_account_id, True)
-
-        flash("自動投稿実行中")
-    except Exception as e:
-        logging.error(f"自動投稿の開始中にエラーが発生しました: {e}")
-        flash("自動投稿の開始中にエラーが発生しました")
-    return redirect(url_for('index'))
+def start_auto_post_handler():
+    return start_auto_post(current_account_id, is_auto_posting, update_auto_post_schedule)
 
 @app.route('/stop_auto_post')
-def stop_auto_post():
-    try:
-        is_auto_posting[current_account_id] = False
-
-        # スレッドを停止
-        if current_account_id in auto_post_threads:
-            stop_event = auto_post_threads[current_account_id]['event']
-            stop_event.set()
-            thread = auto_post_threads[current_account_id]['thread']
-            thread.join()
-            logging.debug(f"スレッドを停止しました: アカウント {current_account_id}")
-            del auto_post_threads[current_account_id]
-
-        # auto_post_statusテーブルにデータを保存
-        update_auto_post_status(current_account_id, False)
-
-        flash("自動投稿を停止しました")
-    except Exception as e:
-        logging.error(f"自動投稿の停止中にエラーが発生しました: {e}")
-        flash("自動投稿の停止中にエラーが発生しました")
-    return redirect(url_for('index'))
+def stop_auto_post_handler():
+    return stop_auto_post(current_account_id, auto_post_threads, is_auto_posting)
 
 @app.route('/messages')
 def get_messages_route():
@@ -429,32 +349,12 @@ def edit_message_route(id):
 
 @app.route('/upload', methods=['POST'])
 def upload():
-    try:
-        if 'file' not in request.files:
-            flash('ファイルがありません')
-            return redirect(url_for('index'))
+    if 'file' not in request.files:
+        flash('ファイルがありません')
+        return redirect(url_for('index'))
 
-        file = request.files['file']
-
-        if file.filename == '':
-            flash('ファイルが選択されていません')
-            return redirect(url_for('index'))
-
-        if file and file.filename.endswith('.csv'):
-            filename = secure_filename(file.filename)
-            file.save(filename)
-            failed_messages = insert_messages_from_csv(filename, current_account_id)
-            flash('CSVファイルのメッセージが追加されました')
-            if failed_messages:
-                # Limit the size of the flash message
-                failed_message_preview = ', '.join(failed_messages[:5])
-                flash(f"重複のため保存できなかったメッセージ: {failed_message_preview} 他 {len(failed_messages) - 5} 件" if len(failed_messages) > 5 else f"重複のため保存できなかったメッセージ: {failed_message_preview}")
-        else:
-            flash('無効なファイル形式です。CSVファイルをアップロードしてください')
-    except Exception as e:
-        logging.error(f"CSVファイルのアップロード中にエラーが発生しました: {e}")
-        flash("CSVファイルのアップロード中にエラーが発生しました")
-    return redirect(url_for('index'))
+    file = request.files['file']
+    return upload_csv(file, current_account_id)
 
 @app.route('/delete_all_messages', methods=['POST'])
 def delete_all_messages_route():
@@ -471,8 +371,8 @@ def check_and_start_auto_post():
     account_ids = get_all_account_ids()
     for account_id in account_ids:
         load_account(account_id)
-        load_settings(account_id)
-        load_auto_post_status(account_id)
+        load_settings(account_id, account_settings)
+        load_auto_post_status(account_id, is_auto_posting)
         if is_auto_posting.get(account_id, False):
             update_auto_post_schedule(account_id)
 
