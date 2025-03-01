@@ -13,7 +13,7 @@ from db_manager import (
     get_messages, delete_message, update_message, delete_all_messages
 )
 from csv_manager import insert_messages_from_csv
-from account_manager import load_account, register_account, edit_account, clients
+from account_manager import load_account, register_account, edit_account, clients, get_all_account_ids
 
 # 環境変数の読み込み
 load_dotenv()
@@ -44,16 +44,6 @@ auto_post_threads = {}  # アカウントごとのスレッド（スレッドと
 last_post_time = {}     # アカウントごとの最後の投稿時間
 
 init_db()
-
-# データベースから全アカウントIDを取得する関数
-def get_all_account_ids():
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    cursor.execute('SELECT id FROM accounts')
-    account_ids = [row['id'] for row in cursor.fetchall()]
-    conn.close()
-    return account_ids
-
 # 設定の読み込み
 def load_settings(account_id):
     settings = get_settings(account_id)
@@ -158,7 +148,7 @@ def post_message(account_id, message=None):
             if client:
                 response = client.create_tweet(text=message)
                 logging.debug(f"ツイートのレスポンス: アカウント {account_id}: {response}")
-                print(f"投稿完了: {message} アカウント {account_id} at {datetime.now()}")
+                print(f"投稿完了: {message} \nアカウント {account_id} at {datetime.now()}")
                 print(f"ツイートID: アカウント {account_id}: {response.data['id']}")
                 last_post_time[account_id] = current_time
                 post_disable_until[account_id] = current_time + timedelta(minutes=MINIMUM_POST_INTERVAL_MINUTES)  # 10分間投稿停止

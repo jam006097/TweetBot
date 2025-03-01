@@ -1,6 +1,6 @@
 import logging
 import tweepy
-from db_manager import get_account, insert_account, update_account
+from db_manager import get_account, insert_account, update_account, get_db_connection
 
 clients = {}
 
@@ -29,3 +29,12 @@ def register_account(name, consumer_api_key, consumer_api_secret, bearer_token, 
 
 def edit_account(name, consumer_api_key, consumer_api_secret, bearer_token, access_token, access_token_secret, account_id):
     update_account(name, consumer_api_key, consumer_api_secret, bearer_token, access_token, access_token_secret, account_id)
+
+# データベースから全アカウントIDを取得する関数
+def get_all_account_ids():
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute('SELECT id FROM accounts')
+    account_ids = [row['id'] for row in cursor.fetchall()]
+    conn.close()
+    return account_ids
