@@ -50,18 +50,18 @@ def set_interval_route(current_account_id, account_settings, is_auto_posting, up
         load_settings(current_account_id, account_settings)
 
         # 自動投稿スケジュールを更新
-        update_auto_post_schedule(current_account_id)
+        update_auto_post_schedule(current_account_id, account_settings)
     except Exception as e:
         logging.error(f"投稿間隔の設定中にエラーが発生しました: {e}")
         flash("投稿間隔の設定中にエラーが発生しました")
     return redirect(url_for('index'))
 
-def start_auto_post(current_account_id, is_auto_posting, update_auto_post_schedule):
+def start_auto_post(current_account_id, is_auto_posting, update_auto_post_schedule, account_settings):
     try:
         is_auto_posting[current_account_id] = True
 
         # 自動投稿スケジュールの更新
-        update_auto_post_schedule(current_account_id)
+        update_auto_post_schedule(current_account_id, account_settings)
 
         # auto_post_statusテーブルにデータを保存
         update_auto_post_status(current_account_id, True)
