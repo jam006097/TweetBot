@@ -1,7 +1,7 @@
 import threading
 import logging
 from datetime import datetime, timedelta
-import tweepy  # 追加
+import tweepy
 from db_manager import get_message
 from account_manager import clients
 
