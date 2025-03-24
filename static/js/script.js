@@ -161,3 +161,12 @@ $(document).ready(function () {
 
 setInterval(fetchMessages, 3600000); // 1時間おきにメッセージを取得
 setInterval(checkResetStatus, 3600000); // 1時間おきにリセットフラグをチェック
+
+// 設定を保存ボタンのクリックイベントにaccount_idを追加
+document.querySelector('form[action="/set_interval"]').addEventListener('submit', function (e) {
+    var accountIdInput = document.createElement('input');
+    accountIdInput.type = 'hidden';
+    accountIdInput.name = 'account_id';
+    accountIdInput.value = document.getElementById('account_id').value;
+    this.appendChild(accountIdInput);
+});
